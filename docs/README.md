@@ -7,6 +7,7 @@ This directory holds the minimal documentation for the Agentic Repo Framework.
 - [architecture.md](architecture.md) — architecture overview
 - [api.md](api.md) — interfaces between parts
 - [operations.md](operations.md) — development and maintenance notes
+- [sync-model.md](sync-model.md) — framework sync model
 
 ## Methodology
 

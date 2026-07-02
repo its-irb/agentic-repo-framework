@@ -1,42 +1,109 @@
 ---
 name: docs-update
-description: Revisa cambios actuales y actualiza documentación si procede.
+description: Revisa cambios desde el último commit documentado y actualiza documentación si procede.
 ---
 
 # docs-update
 
-Revisa si los cambios actuales del repositorio requieren actualizar documentación.
+Revisa si los cambios del repositorio desde el último commit documentado requieren actualizar documentación.
 
 Primero lee:
 
 docs/documentation-methodology.md
 
-Después revisa los cambios actuales del repositorio usando el estado de git.
+Después lee:
 
-Evalúa si los cambios afectan a:
+.agentic.lock.json
 
-- arquitectura general;
-- APIs o interfaces entre partes;
-- despliegue u operación;
-- decisiones importantes de mantenimiento.
+Si no existe `.agentic.lock.json`, o no contiene `documentation.last_reviewed_commit`:
 
-Documentos habituales:
+- si no existe documentación básica, recomienda ejecutar `/docs-init`;
+- si ya existe documentación, ayuda al usuario a elegir un commit base usando `git log --oneline -- docs`;
+- no actualices documentación todavía sin baseline claro.
 
-docs/README.md
-docs/architecture.md
-docs/api.md
-docs/operations.md
-docs/notes/
+Si existe `documentation.last_reviewed_commit`:
+
+1. Obtén el commit base desde `documentation.last_reviewed_commit`.
+
+2. Revisa los cambios desde ese commit hasta `HEAD`:
+   - `git log --oneline <base>..HEAD`
+   - `git diff --name-status <base>..HEAD`
+   - `git diff <base>..HEAD`
+
+3. Deriva automáticamente qué áreas han cambiado a partir del diff y del árbol actual del repositorio. No uses una lista fija de rutas a revisar.
+
+   Ten en cuenta especialmente:
+   - ficheros añadidos;
+   - ficheros borrados;
+   - ficheros movidos;
+   - ficheros modificados;
+   - nuevas convenciones de directorios;
+   - cambios en scripts ejecutables;
+   - cambios en manifiestos o configuración;
+   - cambios en skills o wrappers;
+   - cambios en documentación existente.
+
+4. Revisa la documentación existente y busca afirmaciones relacionadas con las áreas cambiadas.
+
+5. Valida esas afirmaciones contra el estado actual del repositorio:
+   - rutas mencionadas existen o han sido movidas;
+   - listas de componentes coinciden con el árbol real;
+   - comandos documentados coinciden con los scripts reales;
+   - formatos descritos coinciden con los ficheros reales;
+   - elementos movidos, renombrados o eliminados no siguen documentados como activos;
+   - nuevas piezas relevantes del framework están documentadas si afectan al uso o mantenimiento.
+
+6. Actualiza solo los documentos necesarios.
+
+7. Antes de dar la documentación por válida, realiza una auditoría basada en evidencias contra el estado actual del repositorio.
+
+   Para cada documento que consideres afectado por el rango revisado:
+
+   1. Extrae las afirmaciones técnicas relevantes que contiene.
+      Por ejemplo:
+      - listas de skills, comandos, hooks o componentes;
+      - rutas de ficheros o directorios;
+      - formatos de lockfiles, manifests o configuración;
+      - comandos de uso;
+      - flujos de instalación, sincronización o actualización;
+      - comportamiento descrito de scripts o herramientas.
+
+   2. Para cada afirmación, identifica su fuente de verdad en el repositorio.
+      Por ejemplo:
+      - árbol actual de directorios;
+      - contenido real de ficheros;
+      - scripts ejecutables;
+      - manifests;
+      - lockfiles;
+      - configuración;
+      - salida de comandos de inspección.
+
+   3. Comprueba la fuente de verdad antes de aceptar la afirmación como correcta.
+
+   4. Si una afirmación no puede verificarse, no la des por válida:
+      - corrígela si el estado real del repo es claro;
+      - o márcala como pendiente de verificar si no puedes comprobarla.
+
+   5. No concluyas que un documento está actualizado solo porque "parece coherente".
+      Debes poder explicar qué evidencia del repositorio confirma las afirmaciones relevantes.
+
+   La documentación debe describir el estado actual del proyecto, no solo cubrir el diff revisado.
+
+8. Al terminar correctamente, actualiza `.agentic.lock.json`:
+   - `documentation.last_reviewed_commit` = commit actual de `HEAD`;
+   - `documentation.last_reviewed_at` = fecha/hora actual real en formato ISO 8601
+   - Si no puedes obtener la fecha/hora real, deja `documentation.last_reviewed_at` en `null` y avisa.
 
 Reglas:
 
-- No actualices documentación si el cambio no lo requiere.
 - No inventes información.
-- Si un cambio afecta documentación, actualiza el documento correspondiente o propón el cambio.
+- No actualices documentación si no hace falta.
+- No modifiques código.
 - Mantén los documentos cortos.
-- Explica al final qué documentación se ha actualizado y por qué.
-
-Resultado esperado:
-
-- indicar si la documentación estaba al día;
-- o actualizar/proponer cambios mínimos necesarios.
+- No hardcodees en la revisión una lista fija de documentos o rutas; deriva lo afectado desde el diff, el árbol actual y las referencias existentes en la documentación.
+- Si el diff muestra cambios relevantes no documentados, actualiza la documentación correspondiente.
+- Explica al final:
+  - qué rango de commits revisaste;
+  - qué documentación se actualizó;
+  - qué documentación no necesitó cambios;
+  - si quedó algo pendiente de validar.

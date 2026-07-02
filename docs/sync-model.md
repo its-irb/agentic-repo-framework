@@ -37,23 +37,6 @@ En la versión inicial, `agentic-sync` solo gestiona:
 
 No gestiona ningún otro archivo del repositorio.
 
-## Lockfile
-
-Cada repositorio consumidor contiene un fichero:
-
-```text
-.agentic.lock.json
-```
-
-Campos mínimos:
-
-- `framework_version`
-- `installed_at`
-- `source`
-- `managed_core_skills`
-
-En futuras versiones podrá ampliarse con información sobre Repo Skills y otros componentes del framework.
-
 ## Reglas
 
 - `agentic-sync` solo instala y actualiza Core Skills.
@@ -62,3 +45,37 @@ En futuras versiones podrá ampliarse con información sobre Repo Skills y otros
 - Nunca sobrescribe cambios locales sin mostrar previamente un diff.
 - El framework no modifica la documentación específica del repositorio consumidor.
 - El framework solo gestiona la metodología común, las Core Skills y los wrappers específicos de cada arnés.
+
+## Propósito dual del lockfile
+
+El framework utiliza `.agentic.lock.json` para dos propósitos diferentes.
+
+### En el repositorio framework
+
+El lockfile rastrea el estado de revisión de documentación.
+
+Ejemplo:
+
+```json
+{
+  "documentation": {
+    "last_reviewed_commit": "<git-sha>",
+    "last_reviewed_at": "<ISO-8601 timestamp>"
+  }
+}
+```
+
+Esta información es usada por `docs-update` para determinar qué commits quedan por revisar.
+
+### En repositorios consumidores
+
+El lockfile registra el estado instalado del framework además de la información de revisión de documentación.
+
+Los contenidos típicos incluyen:
+
+- versión del framework instalada;
+- archivos gestionados;
+- core skills instaladas;
+- metadatos de revisión de documentación.
+
+El formato exacto puede evolucionar con futuras versiones del framework.

@@ -15,8 +15,5 @@ When a harness encounters `/<skill-name>`:
 |-------|-------------|
 | `docs-init` | Generate minimal initial documentation |
 | `docs-update` | Update documentation alongside code changes |
-| `count-files` | Count files in a scope |
-| `read-test-docs` | Read test documentation |
-| `read-test-index` | Read the test index |
 
 Additional skills can be added by following the structure in [architecture.md](architecture.md).
