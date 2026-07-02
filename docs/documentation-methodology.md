@@ -18,10 +18,22 @@ La documentación no debe intentar explicarlo todo. Debe guardar solo el conocim
    si algo se entiende leyendo el código, no se documenta.
 
 3. No cargar toda la documentación por defecto:
-   los arneses deben indicar qué fichero leer según la tarea, no importar todos los documentos automáticamente.
+   los arneses deben consultar solo los documentos necesarios para la tarea actual.
 
-4. Mantener pocos documentos:
-   estructura recomendada para un repo pequeño:
+4. Referenciar documentación mediante rutas del repositorio:
+   la documentación común y las skills comunes deben referenciar documentos mediante rutas normales del repositorio, por ejemplo:
+
+   ```text
+   docs/architecture.md
+   docs/api.md
+   docs/operations.md
+   ```
+
+   No usar sintaxis específica de un arnés, como `@docs/architecture.md`, dentro de documentación o skills comunes.
+
+5. Mantener pocos documentos.
+
+   Estructura recomendada para un repositorio pequeño:
 
    ```text
    docs/
@@ -30,24 +42,37 @@ La documentación no debe intentar explicarlo todo. Debe guardar solo el conocim
    ├── api.md
    ├── operations.md
    └── notes/
+   ```
 
-5. Actualizar documentación junto con el código:
-    si cambia la arquitectura, la API o el despliegue, se actualiza el documento correspondiente en la misma sesión.
+6. Actualizar la documentación junto con el código:
+
+   Si cambia la arquitectura, la API o el despliegue, se actualiza el documento correspondiente en la misma sesión.
 
 ## Uso por agentes
 
 Los agentes deben:
 
-* leer solo los documentos necesarios para la tarea;
-* no importar documentación completa al iniciar sesión;
-* avisar si un cambio de código requiere actualizar documentación;
-* proponer cambios documentales, no inventarlos.
+- leer solo los documentos necesarios para la tarea;
+- no cargar toda la documentación al iniciar la sesión;
+- utilizar rutas normales del repositorio para consultar documentación;
+- avisar si un cambio de código requiere actualizar documentación;
+- proponer cambios documentales, no inventarlos.
 
-## Adaptadores
+## Skills comunes
 
-Cada arnés implementa esta metodología a su manera:
+Las acciones reutilizables viven en:
 
-* Claude Code: adapters/claude-code/README.md
-* OpenCode: adapters/opencode/README.md
+```text
+.agentic/skills/<skill>/SKILL.md
+```
 
-La metodología común vive aquí. Los detalles de cada herramienta viven en su adaptador.
+Cada arnés implementa un wrapper mínimo:
+
+```text
+.claude/skills/<skill>/SKILL.md
+.opencode/skills/<skill>/SKILL.md
+```
+
+La lógica de cada skill vive una única vez en `.agentic/skills/`.
+
+Los wrappers no deben contener lógica de negocio; únicamente deben invocar la implementación común.
