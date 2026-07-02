@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Node / OpenCode adapters
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+dist/
+build/
+
+# Claude / agent runtime local state
+.claude/settings.local.json
+.claude/.cache/
+.claude/logs/
+
+# Generic local agent state
+.agentic-local/
+*.local.*
+*.tmp
+*.log
+
+# Test/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
