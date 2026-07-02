@@ -2,26 +2,14 @@
 from __future__ import annotations
 
 import argparse
-import sys
 import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.1.0"
+MANIFEST_FILE = ".agentic-framework.json"
 
-def discover_core_skills(framework_root: Path) -> list[str]:
-    skills_dir = framework_root / ".agentic" / "skills"
-
-    if not skills_dir.exists():
-        return []
-
-    skills = []
-    for path in skills_dir.iterdir():
-        if path.is_dir() and (path / "SKILL.md").exists():
-            skills.append(path.name)
-
-    return sorted(skills)
 
 def find_framework_root() -> Path:
     return Path(__file__).resolve().parent.parent
@@ -31,21 +19,57 @@ def is_git_repo(path: Path) -> bool:
     return (path / ".git").exists()
 
 
-def build_managed_files(core_skills: list[str]) -> list[str]:
-    files: list[str] = [
-        "docs/documentation-methodology.md",
-    ]
+def load_manifest(framework_root: Path) -> dict:
+    manifest_path = framework_root / MANIFEST_FILE
 
-    for skill in core_skills:
-        files.extend(
-            [
-                f".agentic/skills/{skill}/SKILL.md",
-                f".claude/skills/{skill}/SKILL.md",
-                f".opencode/skills/{skill}/SKILL.md",
-            ]
-        )
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Missing framework manifest: {manifest_path}")
+
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def discover_core_skills(framework_root: Path) -> list[str]:
+    skills_dir = framework_root / ".agentic" / "skills"
+
+    if not skills_dir.exists():
+        return []
+
+    skills: list[str] = []
+
+    for path in skills_dir.iterdir():
+        if path.is_dir() and (path / "SKILL.md").exists():
+            skills.append(path.name)
+
+    return sorted(skills)
+
+
+def discover_managed_skill_files(framework_root: Path, skill_roots: list[str]) -> list[str]:
+    files: list[str] = []
+
+    for root in skill_roots:
+        root_path = framework_root / root
+
+        if not root_path.exists():
+            continue
+
+        for skill_file in sorted(root_path.glob("*/SKILL.md")):
+            files.append(str(skill_file.relative_to(framework_root)))
 
     return files
+
+
+def build_managed_files(framework_root: Path, manifest: dict) -> list[str]:
+    files: list[str] = list(manifest.get("managed_files", []))
+
+    files.extend(
+        discover_managed_skill_files(
+            framework_root,
+            manifest.get("managed_skill_roots", []),
+        )
+    )
+
+    return sorted(files)
+
 
 def validate_basic_target(framework_root: Path, target: Path) -> bool:
     if not is_git_repo(framework_root):
@@ -60,21 +84,8 @@ def validate_basic_target(framework_root: Path, target: Path) -> bool:
         print("ERROR: target cannot be the framework repository itself.", file=sys.stderr)
         return False
 
-    conflicting_paths = [
-        ".agentic",
-        ".agentic.lock.json",
-    ]
-
-    conflicts = [path for path in conflicting_paths if (target / path).exists()]
-
-    if conflicts:
-        print("ERROR: target already contains agentic-related paths:", file=sys.stderr)
-        for path in conflicts:
-            print(f"  - {path}", file=sys.stderr)
-        print("Refusing to continue to avoid overwriting existing files.", file=sys.stderr)
-        return False
-
     return True
+
 
 def file_status(source: Path, destination: Path) -> str:
     if not source.exists():
@@ -99,17 +110,24 @@ def summarize_statuses(statuses: list[str]) -> dict[str, int]:
 
     return summary
 
-def print_plan(framework_root: Path, target: Path, core_skills: list[str]) -> None:
-    managed_files = build_managed_files(core_skills)
 
+def print_header(framework_root: Path, target: Path, version: str) -> None:
     print("Agentic Repo Framework: OK")
     print("Target repository: OK")
     print("No framework conflicts detected")
     print()
-    print(f"Framework version: {VERSION}")
+    print(f"Framework version: {version}")
     print(f"Framework root: {framework_root}")
     print(f"Target: {target}")
     print()
+
+
+def print_plan(framework_root: Path, target: Path, manifest: dict) -> None:
+    version = manifest["framework_version"]
+    core_skills = discover_core_skills(framework_root)
+    managed_files = build_managed_files(framework_root, manifest)
+
+    print_header(framework_root, target, version)
 
     print("Core skills:")
     for skill in core_skills:
@@ -141,60 +159,16 @@ def print_plan(framework_root: Path, target: Path, core_skills: list[str]) -> No
 
     if summary["MISSING"] > 0:
         print()
-        print("Note: missing source files cannot be installed. Try a git pull in the framework repository to ensure you have the latest version.")
+        print(
+            "Note: missing source files cannot be installed. "
+            "Try a git pull in the framework repository to ensure you have the latest version."
+        )
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Install/update Agentic Repo Framework components in a target repo."
-    )
-    parser.add_argument(
-        "--plan",
-        action="store_true",
-        help="Show what would be installed without changing the target repository.",
-    )
-    parser.add_argument(
-        "target",
-        nargs="?",
-        default=".",
-        help="Target repository path. Defaults to current directory.",
-    )
-    parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Install/update safe files in the target repository.",
-    )
 
-    args = parser.parse_args()
-
-    framework_root = find_framework_root()
-    target = Path(args.target).resolve()
-
-    if not validate_basic_target(framework_root, target):
-        return 1
-
+def apply_plan(framework_root: Path, target: Path, manifest: dict) -> int:
+    version = manifest["framework_version"]
     core_skills = discover_core_skills(framework_root)
-
-    if args.plan:
-        print_plan(framework_root, target, core_skills)
-        return 0
-
-    if args.apply:
-        return apply_plan(framework_root, target, core_skills)
-
-    print("Agentic Repo Framework: OK")
-    print("Target repository: OK")
-    print("No framework conflicts detected")
-    print()
-    print(f"Framework version: {VERSION}")
-    print(f"Framework root: {framework_root}")
-    print(f"Target: {target}")
-    print()
-    print("No action selected. Use --plan to preview installation.")
-
-    return 0
-
-def apply_plan(framework_root: Path, target: Path, core_skills: list[str]) -> int:
-    managed_files = build_managed_files(core_skills)
+    managed_files = build_managed_files(framework_root, manifest)
 
     installed = 0
     skipped = 0
@@ -222,7 +196,7 @@ def apply_plan(framework_root: Path, target: Path, core_skills: list[str]) -> in
             print(f"MISSING  {file_path}")
 
     lockfile = {
-        "framework_version": VERSION,
+        "framework_version": version,
         "installed_at": datetime.now(timezone.utc).isoformat(),
         "source": str(framework_root),
         "managed_core_skills": core_skills,
@@ -231,7 +205,7 @@ def apply_plan(framework_root: Path, target: Path, core_skills: list[str]) -> in
 
     lockfile_path = target / ".agentic.lock.json"
     lockfile_path.write_text(json.dumps(lockfile, indent=2) + "\n", encoding="utf-8")
-    print(f"WRITE    .agentic.lock.json")
+    print("WRITE    .agentic.lock.json")
 
     print()
     print("Summary:")
@@ -241,6 +215,55 @@ def apply_plan(framework_root: Path, target: Path, core_skills: list[str]) -> in
     print(f"  missing sources: {missing}")
 
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Install/update Agentic Repo Framework components in a target repo."
+    )
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="Show what would be installed without changing the target repository.",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Install/update safe files in the target repository.",
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=".",
+        help="Target repository path. Defaults to current directory.",
+    )
+
+    args = parser.parse_args()
+
+    framework_root = find_framework_root()
+    target = Path(args.target).resolve()
+
+    try:
+        manifest = load_manifest(framework_root)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if not validate_basic_target(framework_root, target):
+        return 1
+
+    if args.plan:
+        print_plan(framework_root, target, manifest)
+        return 0
+
+    if args.apply:
+        return apply_plan(framework_root, target, manifest)
+
+    print_header(framework_root, target, manifest["framework_version"])
+    print("No action selected. Use --plan to preview installation.")
+
+    return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

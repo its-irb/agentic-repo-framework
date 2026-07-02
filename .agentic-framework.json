@@ -1,0 +1,11 @@
+{
+  "framework_version": "0.1.0",
+  "managed_files": [
+    "docs/documentation-methodology.md"
+  ],
+  "managed_skill_roots": [
+    ".agentic/skills",
+    ".claude/skills",
+    ".opencode/skills"
+  ]
+}
