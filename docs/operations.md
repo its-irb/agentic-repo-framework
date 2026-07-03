@@ -10,11 +10,12 @@
 ## Syncing the framework to a consumer repository
 
 ```bash
-python bin/agentic-sync.py <target-path> --plan
-python bin/agentic-sync.py <target-path> --apply
+python bin/agentic-sync.py --plan <target-path>
+python bin/agentic-sync.py --apply <target-path>
+python bin/agentic-sync.py --apply --force <target-path>
 ```
 
-`--plan` shows what would be installed. `--apply` installs or updates files, leaving conflicts untouched. See [sync-model.md](sync-model.md) for details.
+`--plan` shows what would be installed. `--apply` installs or updates files, leaving conflicts untouched. `--force` overwrites conflicting files with the framework versions. See [sync-model.md](sync-model.md) for details.
 
 The canonical syntax is to place the action (`--plan` or `--apply`) before the target repository path.
 
