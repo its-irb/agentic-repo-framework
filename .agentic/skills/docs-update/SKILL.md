@@ -23,14 +23,18 @@ Si no existe `.agentic.lock.json`, o no contiene `documentation.last_reviewed_co
 
 Si existe `documentation.last_reviewed_commit`:
 
-1. Obtén el commit base desde `documentation.last_reviewed_commit`.
+1. El `README.md` raíz se valida siempre, incluso si el rango de commits no parece afectarlo.
+La validación del README no depende del diff.
+Debe ejecutarse en cada invocación de docs-update.
 
-2. Revisa los cambios desde ese commit hasta `HEAD`:
+2. Obtén el commit base desde `documentation.last_reviewed_commit`.
+
+3. Revisa los cambios desde ese commit hasta `HEAD`:
    - `git log --oneline <base>..HEAD`
    - `git diff --name-status <base>..HEAD`
    - `git diff <base>..HEAD`
 
-3. Deriva automáticamente qué áreas han cambiado a partir del diff y del árbol actual del repositorio. No uses una lista fija de rutas a revisar.
+4. Deriva automáticamente qué áreas han cambiado a partir del diff y del árbol actual del repositorio. No uses una lista fija de rutas a revisar.
 
    Ten en cuenta especialmente:
    - ficheros añadidos;
@@ -43,9 +47,9 @@ Si existe `documentation.last_reviewed_commit`:
    - cambios en skills o wrappers;
    - cambios en documentación existente.
 
-4. Revisa la documentación existente y busca afirmaciones relacionadas con las áreas cambiadas.
+5. Revisa la documentación existente y busca afirmaciones relacionadas con las áreas cambiadas.
 
-5. Valida esas afirmaciones contra el estado actual del repositorio:
+6. Valida esas afirmaciones contra el estado actual del repositorio:
    - rutas mencionadas existen o han sido movidas;
    - listas de componentes coinciden con el árbol real;
    - comandos documentados coinciden con los scripts reales;
@@ -53,9 +57,9 @@ Si existe `documentation.last_reviewed_commit`:
    - elementos movidos, renombrados o eliminados no siguen documentados como activos;
    - nuevas piezas relevantes del framework están documentadas si afectan al uso o mantenimiento.
 
-6. Actualiza solo los documentos necesarios.
+7. Actualiza solo los documentos necesarios.
 
-7. Antes de dar la documentación por válida, realiza una auditoría basada en evidencias contra el estado actual del repositorio.
+8. Antes de dar la documentación por válida, realiza una auditoría basada en evidencias contra el estado actual del repositorio.
 
    Para cada documento que consideres afectado por el rango revisado:
 
@@ -89,7 +93,7 @@ Si existe `documentation.last_reviewed_commit`:
 
    La documentación debe describir el estado actual del proyecto, no solo cubrir el diff revisado.
 
-8. Valida siempre el `README.md` raíz como documento obligatorio de entrada al proyecto.
+9. Valida siempre el `README.md` raíz como documento obligatorio de entrada al proyecto.
 
    El README no se considera válido solo por no contener errores. Debe pasar esta checklist:
 
@@ -126,7 +130,9 @@ Si existe `documentation.last_reviewed_commit`:
 
    Si el README es genérico, pobre o no permite a un usuario entender cómo usar el proyecto, actualízalo aunque no contenga afirmaciones falsas.
 
-9. Al terminar correctamente, actualiza `.agentic.lock.json`:
+   No seas escueto ni perezoso en el README, es un fichero muy importante, mantenlo actualizado por pequeñas que sean las modifciaciones necesarias.
+
+10. Al terminar correctamente, actualiza `.agentic.lock.json`:
    - `documentation.last_reviewed_commit` = commit actual de `HEAD`;
    - `documentation.last_reviewed_at` = fecha/hora actual real en formato ISO 8601.
    - Si no puedes obtener la fecha/hora real, deja `documentation.last_reviewed_at` en `null` y avisa.
