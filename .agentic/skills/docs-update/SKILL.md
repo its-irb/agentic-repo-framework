@@ -89,23 +89,42 @@ Si existe `documentation.last_reviewed_commit`:
 
    La documentación debe describir el estado actual del proyecto, no solo cubrir el diff revisado.
 
-8. Valida siempre el `README.md` raíz.
+8. Valida siempre el `README.md` raíz como documento obligatorio de entrada al proyecto.
 
-   - Comprueba que refleja las funcionalidades actuales del repositorio y que enlaza a la documentación relevante.
-   - Si se añaden, eliminan o cambian funcionalidades visibles para usuarios, actualiza `README.md`.
-   
-   El `README.md` no se considera correcto solo por no contener afirmaciones falsas.
+   El README no se considera válido solo por no contener errores. Debe pasar esta checklist:
 
-   Debe describir de forma útil el estado actual del proyecto:
-   - qué es el proyecto;
-   - qué problema resuelve;
-   - qué funcionalidades principales tiene;
-   - cómo se instala o sincroniza en un repo consumidor;
-   - qué skills core existen;
-   - cómo se usa el flujo básico;
-   - dónde está la documentación detallada.
+   1. Describe qué es el proyecto en 1-3 frases.
+   2. Explica qué problema resuelve.
+   3. Enumera las funcionalidades visibles para usuarios/desarrolladores.
+   4. Explica el flujo básico de uso.
+   5. Explica el flujo básico de instalación, ejecución o sincronización, si el proyecto tiene alguno.
+   6. Lista los comandos, scripts, herramientas o puntos de entrada principales que el usuario puede ejecutar.
+   7. Muestra la estructura mínima relevante del repositorio.
+   8. Enlaza a la documentación detallada en `docs/`.
 
-   Si el `README.md` es demasiado pobre, genérico o no refleja funcionalidades visibles para usuarios, actualízalo aunque no contenga errores factuales.
+   Para validar la checklist, deriva primero la superficie pública del repositorio.
+
+   Inspecciona el árbol actual y detecta, si existen:
+   - scripts ejecutables;
+   - comandos o herramientas CLI;
+   - skills, hooks, plugins, workflows o integraciones de agentes;
+   - manifests, lockfiles o ficheros de configuración relevantes;
+   - servicios, entrypoints, APIs o interfaces públicas;
+   - documentación existente en `docs/`.
+
+   Regla sobre "No aplica":
+
+   No marques un punto como "No aplica" solo porque el README actual no lo mencione.
+
+   Solo puedes marcarlo como "No aplica" después de haber inspeccionado la superficie pública del repositorio y haber comprobado que no existe ningún elemento real que corresponda a ese punto.
+
+   Si existe una funcionalidad pública, comando, script, skill, servicio, API, workflow o mecanismo de instalación/sincronización, el README debe mencionarlo de forma resumida.
+
+   Si el README no menciona una funcionalidad pública existente, actualízalo.
+
+   Si el README menciona una funcionalidad que ya no existe, corrígelo.
+
+   Si el README es genérico, pobre o no permite a un usuario entender cómo usar el proyecto, actualízalo aunque no contenga afirmaciones falsas.
 
 9. Al terminar correctamente, actualiza `.agentic.lock.json`:
    - `documentation.last_reviewed_commit` = commit actual de `HEAD`;
