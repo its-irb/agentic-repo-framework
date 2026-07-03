@@ -89,9 +89,27 @@ Si existe `documentation.last_reviewed_commit`:
 
    La documentación debe describir el estado actual del proyecto, no solo cubrir el diff revisado.
 
-8. Al terminar correctamente, actualiza `.agentic.lock.json`:
+8. Valida siempre el `README.md` raíz.
+
+   - Comprueba que refleja las funcionalidades actuales del repositorio y que enlaza a la documentación relevante.
+   - Si se añaden, eliminan o cambian funcionalidades visibles para usuarios, actualiza `README.md`.
+   
+   El `README.md` no se considera correcto solo por no contener afirmaciones falsas.
+
+   Debe describir de forma útil el estado actual del proyecto:
+   - qué es el proyecto;
+   - qué problema resuelve;
+   - qué funcionalidades principales tiene;
+   - cómo se instala o sincroniza en un repo consumidor;
+   - qué skills core existen;
+   - cómo se usa el flujo básico;
+   - dónde está la documentación detallada.
+
+   Si el `README.md` es demasiado pobre, genérico o no refleja funcionalidades visibles para usuarios, actualízalo aunque no contenga errores factuales.
+
+9. Al terminar correctamente, actualiza `.agentic.lock.json`:
    - `documentation.last_reviewed_commit` = commit actual de `HEAD`;
-   - `documentation.last_reviewed_at` = fecha/hora actual real en formato ISO 8601
+   - `documentation.last_reviewed_at` = fecha/hora actual real en formato ISO 8601.
    - Si no puedes obtener la fecha/hora real, deja `documentation.last_reviewed_at` en `null` y avisa.
 
 Reglas:

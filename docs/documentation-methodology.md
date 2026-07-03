@@ -76,3 +76,29 @@ Cada arnés implementa un wrapper mínimo:
 La lógica de cada skill vive una única vez en `.agentic/skills/`.
 
 Los wrappers no deben contener lógica de negocio; únicamente deben invocar la implementación común.
+
+## README principal
+
+El `README.md` de la raíz debe mantenerse como resumen actualizado del estado del proyecto.
+
+Debe incluir, como mínimo:
+
+- qué es el proyecto;
+- qué problema resuelve;
+- funcionalidades disponibles;
+- cómo instalar o usar lo básico;
+- enlaces a la documentación detallada en `docs/`.
+
+No debe duplicar toda la documentación interna. Debe actuar como puerta de entrada.
+
+El `README.md` no se considera correcto solo por no contener afirmaciones falsas.
+
+   Debe describir de forma útil el estado actual del proyecto:
+   - qué es el proyecto;
+   - qué problema resuelve;
+   - qué funcionalidades principales tiene;
+   - cómo se instala o sincroniza en un repo consumidor;
+   - qué skills core existen;
+   - cómo se usa el flujo básico;
+   - dónde está la documentación detallada.
+   Si el `README.md` es demasiado pobre, genérico o no refleja funcionalidades visibles para usuarios, actualízalo aunque no contenga errores factuales.
