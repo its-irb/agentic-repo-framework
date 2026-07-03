@@ -14,32 +14,33 @@ Proceso obligatorio:
    - git diff --stat
    - git diff
 
-2. Si hay cambios que afectan a documentación, arquitectura, scripts, skills, sincronización o uso del framework:
-   - revisa .agentic/skills/docs-update/SKILL.md
-   - ejecuta su lógica antes de preparar el commit.
+2. Ejecuta siempre la lógica de `.agentic/skills/docs-update/SKILL.md` antes de preparar el commit.
 
-3. Vuelve a revisar:
+3. Si `docs-update` modifica documentación, vuelve a revisar:
    - git status --short
    - git diff --stat
 
-4. Propón un mensaje de commit con:
+4. Propón el conjunto final de ficheros a incluir en el commit.
+
+5. Propón un mensaje de commit con:
    - título corto;
    - cuerpo largo explicando qué cambió;
    - motivo del cambio;
    - impacto funcional;
    - notas de validación realizadas.
 
-5. Antes de ejecutar `git add` o `git commit`, pide confirmación explícita al usuario.
+6. Antes de ejecutar `git add` o `git commit`, pide confirmación explícita al usuario.
 
-6. Si el usuario confirma:
+7. Si el usuario confirma:
    - ejecuta git add sobre los ficheros aprobados;
    - ejecuta git commit con el mensaje propuesto.
 
-7. No hagas `git push` salvo que el usuario lo pida explícitamente.
+8. No hagas `git push` salvo que el usuario lo pida explícitamente.
 
-8. Si el usuario pide push:
+9. Si el usuario pide push:
    - muestra primero la rama actual;
-   - ejecuta git push solo tras confirmación explícita.
+   - muestra el remote/upstream configurado;
+   - ejecuta `git push` solo tras confirmación explícita.
 
 Reglas:
 

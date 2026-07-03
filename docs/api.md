@@ -13,6 +13,7 @@ When a harness encounters `/<skill-name>`:
 
 | Skill | Description |
 |-------|-------------|
+| `commit-work` | Review changes, update docs if needed, and prepare a descriptive commit |
 | `docs-init` | Generate minimal initial documentation |
 | `docs-update` | Update documentation alongside code changes |
 
