@@ -1,6 +1,6 @@
 ---
 name: commit-work
-description: Revisa cambios, actualiza y valida la documentación por audiencias si procede, y prepara un commit descriptivo.
+description: Revisa cambios, actualiza y valida las capas documentales si procede, y prepara un commit descriptivo.
 ---
 
 # commit-work
@@ -17,9 +17,9 @@ Prepara un commit de trabajo con una descripción clara y completa.
 
 2. Ejecuta siempre la lógica de `.agentic/skills/docs-update/SKILL.md` antes de preparar el commit.
 
-3. Si `docs-update` indica que falta la audiencia o que el repositorio todavía no está adaptado a la convención documental, ejecuta o propone el flujo de `.agentic/skills/docs-init/SKILL.md` antes de continuar.
+3. Si `docs-update` indica que no existe un baseline documental o que el repositorio todavía no dispone de documentación inicial conforme a la metodología, ejecuta o propone el flujo de `.agentic/skills/docs-init/SKILL.md` antes de continuar.
 
-4. Si `docs-update` o `docs-init` modifican documentación o configuración, vuelve a revisar:
+4. Si `docs-update` o `docs-init` modifican documentación o estado documental, vuelve a revisar:
 
    - `git status --short`
    - `git diff --stat`
@@ -32,7 +32,8 @@ Prepara un commit de trabajo con una descripción clara y completa.
    - impacto en documentación para usuarios;
    - validación del `README.md`;
    - validación de `AGENTS.md`, si existe;
-   - comprobación de coherencia entre los niveles afectados;
+   - comprobación de coherencia entre las capas afectadas;
+   - comprobación de autosuficiencia de las capas afectadas;
    - pendientes de validación, si existen.
 
 6. Propón el conjunto final de ficheros a incluir en el commit.
@@ -66,6 +67,6 @@ Prepara un commit de trabajo con una descripción clara y completa.
 - No inventes cambios.
 - No incluyas ficheros no revisados.
 - No hagas commit si hay conflictos, secretos, binarios inesperados o cambios dudosos.
-- No hagas commit si la documentación requerida no está actualizada o contiene contradicciones conocidas.
+- No hagas commit si la documentación requerida no está actualizada, contiene contradicciones conocidas o alguna capa afectada ha quedado insuficiente.
 - No modifiques documentación solo para producir cambios artificiales.
 - Si el estado del repositorio no está claro, detente y pregunta.

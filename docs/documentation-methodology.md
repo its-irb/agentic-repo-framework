@@ -2,48 +2,36 @@
 
 ## Objetivo
 
-Mantener una documentación actualizada, coherente y adaptada a sus distintas audiencias:
+Mantener una documentación actualizada, coherente y adaptada a tres audiencias permanentes:
 
 - agentes de coding;
 - desarrolladores y mantenedores;
 - usuarios del proyecto.
 
+Cada audiencia debe disponer de una capa documental propia, suficiente y autosuficiente. Ninguna persona o agente debería tener que consultar otra capa para cubrir las necesidades normales de su función.
+
 La documentación destinada a agentes debe seguir siendo pequeña, modular y cargable bajo demanda. La documentación destinada a desarrolladores y usuarios puede ser más extensa cuando sea necesario para comprender, mantener o utilizar correctamente el proyecto.
 
-## Audiencia del repositorio
+## Capas documentales
 
-Cada repositorio debe declarar su audiencia en:
+La documentación se organiza conceptualmente en tres capas o vistas del mismo sistema.
 
-```text
-.agentic/config.json
-```
-
-Valores admitidos:
-
-- `technical`: repositorios destinados principalmente a desarrolladores, administradores, DevOps u otros usuarios técnicos;
-- `general`: aplicaciones o servicios destinados a usuarios finales no especializados.
-
-La audiencia determina principalmente el lenguaje, los conocimientos que pueden asumirse y la profundidad de la documentación de uso. No impone una estructura fija ni un número determinado de documentos.
-
-Si falta esta configuración, `docs-init` debe solicitarla y adaptar la documentación existente a esta metodología.
-
-## Niveles de documentación
-
-La documentación se organiza conceptualmente en tres niveles.
+Las capas pueden resumir, ampliar, reorganizar o adaptar el lenguaje, pero deben describir los mismos hechos y mantenerse coherentes entre sí.
 
 ### Documentación para agentes
 
-Debe permitir que un agente comprenda y modifique el repositorio de forma selectiva sin cargar documentación innecesaria.
+Debe permitir que un agente comprenda y modifique el repositorio de forma selectiva sin cargar documentación innecesaria ni depender de la documentación para desarrolladores o usuarios.
 
 Debe ser:
 
 - pequeña;
-- modular;
+- organizada en módulos de conocimiento independientes;
 - orientada a responsabilidades, arquitectura, interfaces, invariantes, convenciones y operación;
 - cargable bajo demanda;
-- centrada en el conocimiento necesario para localizar y modificar el código con seguridad.
+- centrada en el conocimiento necesario para localizar y modificar el código con seguridad;
+- suficiente para el trabajo habitual de un agente sobre el repositorio.
 
-No debe reproducir el código ni convertirse en un manual exhaustivo.
+No debe reproducir el código ni convertirse en un manual exhaustivo, pero tampoco debe omitir conocimiento necesario obligando al agente a acudir a otra capa.
 
 La ubicación recomendada es:
 
@@ -53,9 +41,36 @@ docs/agent/
 
 La estructura interna depende de las necesidades reales del proyecto.
 
+### Modularidad y carga selectiva
+
+La documentación para agentes debe organizarse en módulos de conocimiento independientes.
+
+Cada módulo debe cubrir un único ámbito coherente del repositorio para que un agente pueda cargar únicamente la información necesaria para la tarea que está realizando.
+
+La modularidad no depende del tamaño del repositorio ni del número de documentos, sino de la organización conceptual del conocimiento.
+
+Agrupa en un mismo documento únicamente conocimiento que:
+
+- normalmente se consulte conjuntamente;
+- pertenezca al mismo subsistema, responsabilidad o flujo;
+- evolucione habitualmente por las mismas razones.
+
+Divide la documentación cuando un documento mezcle:
+
+- responsabilidades independientes;
+- subsistemas distintos;
+- workflows diferentes;
+- áreas de conocimiento que un agente podría consultar de forma aislada.
+
+No impongas un número fijo de documentos.
+
+Un repositorio pequeño puede necesitar pocos documentos, pero no debe concentrar en un único documento áreas conceptualmente independientes solo porque su volumen sea reducido.
+
+Puede existir un documento índice para facilitar la navegación, pero su función es orientar la carga selectiva de la documentación, no concentrar toda la información de la capa de agentes.
+
 ### Documentación para desarrolladores
 
-Debe permitir que un desarrollador comprenda el proyecto, su intención, su estructura y sus principales flujos sin tener que leer previamente todo el código.
+Debe permitir que un desarrollador comprenda el proyecto, su intención, su estructura y sus principales flujos, y pueda mantenerlo o ampliarlo sin tener que leer previamente todo el código ni consultar la documentación para agentes.
 
 Puede incluir, según proceda:
 
@@ -80,16 +95,20 @@ La estructura y extensión dependen de la complejidad del proyecto.
 
 ### Documentación para usuarios
 
-Debe explicar cómo instalar, acceder, configurar y utilizar el proyecto, así como resolver los problemas habituales.
+Debe permitir que un usuario instale, acceda, configure y utilice el proyecto, y resuelva los problemas habituales, sin depender de la documentación para desarrolladores o agentes.
 
-En repositorios con audiencia `technical`, puede asumir conocimientos técnicos razonables, pero debe seguir siendo suficiente y operativa.
+Debe adaptarse a la superficie real del producto y a los conocimientos razonables de sus usuarios. Una herramienta técnica puede dirigirse a usuarios técnicos; una aplicación de uso general debe emplear lenguaje comprensible para usuarios no especializados.
 
-En repositorios con audiencia `general`, debe:
+Puede incluir, según proceda:
 
-- utilizar lenguaje comprensible para usuarios no especializados;
-- evitar detalles internos innecesarios;
-- describir tareas desde la perspectiva del producto;
-- cubrir los primeros pasos, las funciones principales, la configuración visible, los errores frecuentes y la recuperación.
+- instalación o acceso;
+- primeros pasos;
+- tareas y flujos habituales;
+- comandos, opciones o controles visibles;
+- configuración;
+- capacidades y limitaciones;
+- resolución de problemas y recuperación;
+- preguntas frecuentes.
 
 La ubicación recomendada es:
 
@@ -99,25 +118,65 @@ docs/user/
 
 La estructura y el número de documentos dependen de la superficie funcional del proyecto.
 
+## Autosuficiencia y redundancia
+
+Cada capa documental debe ser autosuficiente para su audiencia:
+
+- un agente debe poder trabajar con la documentación para agentes;
+- un desarrollador debe poder comprender y mantener el proyecto con la documentación para desarrolladores;
+- un usuario debe poder utilizar el producto con la documentación para usuarios.
+
+La redundancia entre capas está permitida y es esperable cuando resulta necesaria para mantener esa autosuficiencia.
+La autosuficiencia se exige al conjunto de cada capa documental, no a cada documento individual.
+Cada documento debe ser autosuficiente únicamente dentro de su ámbito de conocimiento y poder consultarse de forma independiente.
+La documentación de una misma capa debe organizarse para favorecer la carga selectiva, evitando documentos que concentren áreas de conocimiento no relacionadas.
+
+No copies texto mecánicamente entre capas. Expresa el mismo conocimiento con el lenguaje, el enfoque y el nivel de detalle adecuados para cada audiencia.
+Evita la duplicación innecesaria dentro de una misma capa documental.
+
 ## Principios generales
 
-1. Documentar según la audiencia y el propósito.
+1. La unidad de mantenimiento es el conocimiento, no el documento.
+
+   Cuando cambia una funcionalidad, interfaz, componente, flujo o limitación, identifica qué conocimiento ha cambiado y actualiza todas las capas donde resulte relevante.
+
+2. Las capas derivan directamente del conocimiento verificado del repositorio.
+
+   La documentación para agentes, desarrolladores y usuarios debe construirse a partir del código, la configuración, los scripts, los manifiestos, las interfaces, el comportamiento real y la documentación válida existente.
+
+   No uses una capa documental como fuente canónica para generar mecánicamente las demás.
+
+   Ninguna capa es la documentación principal de la que derivan las otras.
+   
+   Las tres son representaciones independientes del mismo conocimiento, adaptadas a distintas audiencias.
+
+3. Documentar según la audiencia y el propósito.
 
    La brevedad es prioritaria en la documentación para agentes. En la documentación para desarrolladores y usuarios, deben priorizarse la claridad, la suficiencia y la utilidad.
 
-2. No imponer una estructura rígida.
+4. No imponer una estructura rígida.
 
-   Cada proyecto debe tener únicamente los documentos que necesite. No existe una lista fija de nombres, directorios internos ni número de ficheros.
+   Cada proyecto debe tener únicamente los documentos que necesite. No existe una lista fija de nombres, subdirectorios ni número de ficheros.
 
-3. No duplicar mecánicamente el código.
+5. No duplicar mecánicamente el código.
 
    No documentar línea por línea aquello que el código expresa de forma evidente. Sí documentar intención, contexto, relaciones, flujos, decisiones, restricciones y procedimientos que sería costoso reconstruir leyendo el repositorio.
 
-4. No cargar toda la documentación por defecto.
+6. No cargar toda la documentación por defecto.
 
-   Los agentes deben consultar solo los documentos necesarios para la tarea actual. Deben empezar por la documentación compacta de `docs/agent/` y profundizar en `docs/development/` o `docs/user/` cuando la tarea lo requiera.
+   Los agentes deben consultar solo los documentos necesarios para la tarea actual. Deben empezar por la documentación compacta de `docs/agent/`.
 
-5. Referenciar documentación mediante rutas normales del repositorio.
+   Pueden consultar otras capas para comprobar impacto o coherencia documental, pero la documentación para agentes debe seguir siendo suficiente para su trabajo habitual.
+
+7. Optimizar la carga selectiva del conocimiento.
+
+   La organización documental debe minimizar la cantidad de contexto necesaria para realizar una tarea.
+
+   La documentación para agentes no se considera suficientemente modular si obliga habitualmente a cargar información perteneciente a áreas independientes del repositorio.
+
+   La modularidad debe favorecer que cada tarea consulte únicamente el conocimiento relacionado con la parte del sistema que va a analizar o modificar.
+
+8. Referenciar documentación mediante rutas normales del repositorio.
 
    Por ejemplo:
 
@@ -129,17 +188,32 @@ La estructura y el número de documentos dependen de la superficie funcional del
 
    No usar sintaxis específica de un arnés, como `@docs/...`, dentro de documentación o skills comunes.
 
-6. Actualizar la documentación junto con el código.
+9. Actualizar la documentación junto con el código.
 
-   Si cambia la arquitectura, una interfaz, la operación, el flujo de desarrollo o el comportamiento visible para usuarios, debe actualizarse la documentación correspondiente en la misma sesión.
+   Si cambia la arquitectura, una interfaz, la operación, el flujo de desarrollo o el comportamiento visible para usuarios, debe actualizarse el conocimiento correspondiente en todas las capas afectadas durante la misma sesión.
 
-7. Reutilizar antes de crear.
+10. Reutilizar antes de crear, sin confundir reutilización con simple reparto.
 
-   Al adaptar un repositorio existente, conservar la documentación útil, reclasificarla o ampliarla cuando sea necesario y crear únicamente lo que falte.
+   Al adaptar un repositorio existente, conservar el conocimiento útil y reutilizarlo para generar las representaciones adecuadas para cada audiencia.
 
-8. No inventar información.
+   Mover o reclasificar documentos no es suficiente si alguna capa sigue siendo incompleta o dependiente de otra.
+
+11. No inventar información.
 
    Toda afirmación debe poder justificarse con el estado actual del repositorio. Si algo no puede verificarse, debe marcarse como pendiente de validar.
+
+   No absorbas ni elimines artefactos operativos del framework por considerar que su contenido aparece también en la documentación.
+
+   Antes de mover, sustituir o eliminar un fichero, determina si su función es:
+
+   - documentación;
+   - configuración;
+   - manifiesto;
+   - índice operativo;
+   - interfaz pública;
+   - entrada consumida por herramientas o agentes.
+
+   La documentación puede explicar esos artefactos, pero no sustituirlos cuando cumplen una función operativa propia.
 
 ## Coherencia documental
 
@@ -153,8 +227,9 @@ Al crear o actualizar documentación:
    - `AGENTS.md`, si existe;
    - `docs/agent/`;
    - `docs/development/`;
-   - `docs/user/`.
-3. Comprobar que todos los niveles:
+   - `docs/user/`;
+   - cualquier otra documentación que cumpla esas funciones.
+3. Comprobar que todas las capas:
    - utilizan nombres compatibles;
    - describen el mismo comportamiento;
    - reflejan las mismas capacidades y limitaciones;
@@ -162,9 +237,9 @@ Al crear o actualizar documentación:
    - no ofrecen instrucciones incompatibles.
 4. Adaptar el nivel de detalle y el lenguaje a cada audiencia sin cambiar los hechos.
 5. Si dos documentos se contradicen, determinar el comportamiento real a partir del repositorio y corregir todos los documentos afectados.
-6. No considerar la documentación actualizada mientras existan contradicciones conocidas entre sus distintos niveles.
-
-Los niveles documentales pueden resumir, ampliar o adaptar el lenguaje, pero deben describir el mismo sistema.
+6. Comprobar además la autosuficiencia de cada capa y completar cualquier conocimiento necesario que solo aparezca en otra.
+7. No considerar la documentación actualizada mientras existan contradicciones conocidas o dependencias evitables entre capas.
+8. Comprobar que la documentación para agentes permite localizar el conocimiento de cada área del repositorio sin obligar a cargar documentación perteneciente a otras áreas conceptualmente independientes.
 
 ## Uso por agentes
 
@@ -172,9 +247,11 @@ Los agentes deben:
 
 - leer solo los documentos necesarios para la tarea;
 - no cargar toda la documentación al iniciar la sesión;
-- empezar por `docs/agent/` cuando necesiten contexto compacto;
-- consultar `docs/development/` cuando necesiten comprender diseño, flujos o mantenimiento;
-- consultar `docs/user/` cuando el cambio afecte al uso visible del producto;
+- empezar por `docs/agent/` cuando necesiten contexto del repositorio;
+- cargar únicamente los módulos documentales relacionados con la tarea que están realizando;
+- evitar cargar documentación perteneciente a áreas independientes del repositorio salvo que la tarea realmente lo requiera.
+- tratar `docs/agent/` como una capa autosuficiente para el trabajo habitual;
+- consultar `docs/development/` y `docs/user/` cuando deban actualizar esas capas, comprobar coherencia o evaluar impacto;
 - utilizar rutas normales del repositorio;
 - avisar si un cambio de código requiere actualizar documentación;
 - proponer o realizar cambios documentales basados en evidencias, sin inventarlos.

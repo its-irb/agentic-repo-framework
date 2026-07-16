@@ -1,6 +1,6 @@
 ---
 name: docs-update
-description: Revisa los cambios desde el último commit documentado, actualiza la documentación afectada y verifica la coherencia entre README, agentes, desarrolladores y usuarios.
+description: Revisa los cambios desde el último commit documentado, actualiza las capas autosuficientes para agentes, desarrolladores y usuarios, y verifica su coherencia con el README.
 ---
 
 # docs-update
@@ -16,30 +16,16 @@ docs/documentation-methodology.md
 Después lee:
 
 ```text
-.agentic/config.json
 .agentic.lock.json
 ```
-
-## Configuración inicial
-
-Comprueba que `.agentic/config.json` existe y contiene una audiencia válida:
-
-- `technical`;
-- `general`.
-
-Si falta el fichero o la audiencia:
-
-- no continúes con la actualización normal;
-- indica que el repositorio debe inicializarse o adaptarse;
-- ejecuta o recomienda ejecutar la lógica de `.agentic/skills/docs-init/SKILL.md`.
 
 ## Baseline documental
 
 Si no existe `.agentic.lock.json`, o no contiene `documentation.last_reviewed_commit`:
 
-- si no existe documentación básica, recomienda ejecutar `/docs-init`;
-- si ya existe documentación, ayuda al usuario a elegir un commit base usando `git log --oneline -- docs`;
-- no actualices documentación todavía sin baseline claro.
+- no ejecutes una actualización incremental sin baseline;
+- indica que el repositorio necesita una revisión documental integral;
+- ejecuta o recomienda ejecutar la lógica de `.agentic/skills/docs-init/SKILL.md`.
 
 Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligatorio.
 
@@ -57,7 +43,7 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
    - `git diff --name-status <base>..HEAD`
    - `git diff <base>..HEAD`
 
-4. Deriva automáticamente qué áreas han cambiado a partir del diff y del árbol actual del repositorio.
+4. Deriva automáticamente qué conocimiento y áreas del sistema han cambiado a partir del diff y del árbol actual del repositorio.
 
    No uses una lista fija de rutas a revisar.
 
@@ -71,9 +57,10 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
    - cambios en scripts ejecutables;
    - cambios en manifiestos o configuración;
    - cambios en skills o wrappers;
-   - cambios en documentación existente.
+   - cambios en documentación existente;
+   - cambios de comportamiento, capacidades o limitaciones visibles.
 
-5. Evalúa por separado el impacto en:
+5. Para cada conocimiento afectado, evalúa su impacto en:
 
    - documentación para agentes;
    - documentación para desarrolladores;
@@ -81,7 +68,9 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
    - `README.md`;
    - `AGENTS.md`, si existe.
 
-   No es obligatorio modificar todos los niveles. Actualiza solo los afectados.
+   No asumas que un cambio pertenece a una sola capa porque se originó en código interno o en una interfaz pública.
+
+   Proyecta el conocimiento actualizado sobre todas las capas donde resulte relevante.
 
 6. Revisa la documentación existente y busca afirmaciones relacionadas con las áreas cambiadas.
 
@@ -95,7 +84,23 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
    - las nuevas piezas relevantes están documentadas si afectan al uso o mantenimiento;
    - el comportamiento visible para usuarios coincide con la implementación actual.
 
-8. Actualiza solo los documentos necesarios.
+8. Actualiza solo el conocimiento y los documentos afectados.
+
+   No es obligatorio modificar todas las capas en cada ejecución. Sí es obligatorio evaluar todas y actualizar cada una donde el cambio sea relevante para su audiencia.
+
+## Autosuficiencia de las capas
+
+Comprueba que, después de la actualización:
+
+- la documentación para agentes sigue siendo suficiente para el trabajo habitual sin depender de `docs/development/`;
+- la documentación para desarrolladores permite comprender y mantener el proyecto sin depender de `docs/agent/`;
+- la documentación para usuarios permite utilizar el producto sin consultar documentación técnica.
+
+La redundancia entre capas está permitida cuando sea necesaria para preservar esa autosuficiencia.
+
+No sustituyas información necesaria por enlaces a otra capa.
+
+Si un cambio deja una capa incompleta aunque otra contenga la información correcta, actualiza también la capa incompleta.
 
 ## Auditoría basada en evidencias
 
@@ -141,7 +146,7 @@ Para cada documento afectado por el rango revisado:
 
 La documentación debe describir el estado actual del proyecto, no limitarse a cubrir el diff revisado.
 
-## Coherencia entre niveles
+## Coherencia entre capas
 
 Para los conceptos afectados por el cambio, busca referencias relacionadas en:
 
@@ -159,13 +164,15 @@ Comprueba que:
 - coinciden las capacidades y limitaciones;
 - no hay rutas, comandos o instrucciones incompatibles;
 - no se mantiene como actual algo eliminado o sustituido;
-- el nivel de detalle y el lenguaje cambian según la audiencia, pero no los hechos.
+- el nivel de detalle, el enfoque y el lenguaje cambian según la audiencia, pero no los hechos;
+- cada capa conserva toda la información necesaria para su propia audiencia.
 
-Si detectas una contradicción:
+Si detectas una contradicción o una dependencia innecesaria entre capas:
 
 1. determina el comportamiento real a partir del repositorio;
 2. corrige todos los documentos afectados;
-3. no des la documentación por válida mientras la contradicción permanezca.
+3. completa las capas que hayan quedado insuficientes;
+4. no des la documentación por válida mientras el problema permanezca.
 
 ## Validación obligatoria del README
 
@@ -219,21 +226,23 @@ Al terminar correctamente, actualiza `.agentic.lock.json`:
 - No inventes información.
 - No actualices documentación si no hace falta.
 - No modifiques código.
-- Mantén compacta la documentación para agentes.
-- En documentación para desarrolladores y usuarios, prioriza claridad y suficiencia sobre brevedad.
+- Mantén compacta y autosuficiente la documentación para agentes.
+- En documentación para desarrolladores y usuarios, prioriza claridad, suficiencia y autosuficiencia sobre brevedad.
 - No hardcodees una lista fija de documentos o rutas; deriva lo afectado desde el diff, el árbol actual y las referencias existentes.
 - Si el diff muestra cambios relevantes no documentados, actualiza la documentación correspondiente.
-- No des la revisión por terminada si existen contradicciones conocidas entre niveles documentales.
+- No sustituyas conocimiento necesario por enlaces a otra capa.
+- No des la revisión por terminada si existen contradicciones conocidas o capas insuficientes.
 
 ## Resultado
 
 Explica al final:
 
 - qué rango de commits revisaste;
-- qué audiencia tiene el repositorio;
+- qué conocimiento cambió;
 - qué impacto evaluaste en agentes, desarrolladores, usuarios, README y AGENTS;
 - qué documentación se actualizó;
 - qué documentación no necesitó cambios;
+- cómo verificaste la autosuficiencia de las tres capas;
 - qué evidencias principales utilizaste;
 - si detectaste o resolviste contradicciones;
 - si quedó algo pendiente de validar.
