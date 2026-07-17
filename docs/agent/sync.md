@@ -85,6 +85,16 @@ la documentación específica del consumidor.
   `framework_version`, `installed_at`, `source`, `managed_core_skills`,
   `managed_files` (dict de ruta → `{sha256}`).
 
+`agentic-sync` solo gestiona esas cinco claves. Cualquier otra clave de nivel
+superior presente en el lockfile (p. ej. `documentation`, escrita por
+`docs-init`/`docs-update`) se conserva intacta entre sincronizaciones; sync no
+asume cuáles pueden ser esas claves externas.
+
+Si el lockfile existe pero no es JSON válido o su raíz no es un objeto, sync
+termina con código 1 **sin sobrescribirlo** (mensaje claro en stderr) para que
+pueda corregirse manualmente. La escritura es atómica: se genera el JSON
+completo en un `.tmp` y se reemplaza el original solo tras éxito.
+
 El formato del lockfile de consumidor puede evolucionar con futuras versiones.
 
 ## Reglas de sync

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import hashlib
@@ -26,11 +27,36 @@ def load_target_lockfile(target: Path) -> dict:
     which framework-managed files were installed, their SHA-256 hashes, and the
     framework version, enabling the sync tool to distinguish safe updates from
     genuine conflicts.
+
+    The lockfile is shared with other components (e.g. docs-init, docs-update),
+    which may store their own top-level keys (such as ``documentation``). This
+    function only parses the file; it never rewrites it.
+
+    Raises ValueError if the lockfile exists but is not valid JSON or its root
+    is not a JSON object. In that case the caller must halt without overwriting
+    the file, so the user can fix it manually.
     """
     lockfile_path = target / ".agentic.lock.json"
     if not lockfile_path.exists():
         return {}
-    return json.loads(lockfile_path.read_text(encoding="utf-8"))
+
+    try:
+        data = json.loads(lockfile_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"{lockfile_path} contains invalid JSON "
+            f"({exc.msg} at line {exc.lineno} column {exc.colno}). "
+            f"Fix it manually; agentic-sync will not overwrite it."
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"{lockfile_path} root is not a JSON object "
+            f"(got {type(data).__name__}). "
+            f"Fix it manually; agentic-sync will not overwrite it."
+        )
+
+    return data
 
 def get_locked_hash(lockfile: dict, file_path: str) -> str | None:
     """Return the SHA-256 hash stored in the lockfile for a given managed file.
@@ -361,16 +387,24 @@ def apply_plan(framework_root: Path, target: Path, manifest: dict, force: bool) 
             missing += 1
             print(f"MISSING  {file_path}")
 
-    lockfile = {
-        "framework_version": version,
-        "installed_at": datetime.now(timezone.utc).isoformat(),
-        "source": str(framework_root),
-        "managed_core_skills": core_skills,
-        "managed_files": new_managed_files,
-    }
+    # The lockfile is shared with other components (e.g. docs-init/docs-update
+    # own the ``documentation`` key). Preserve every existing top-level key and
+    # update only the keys managed by agentic-sync. Start from a shallow copy of
+    # the current lockfile (empty dict when the file did not exist).
+    lockfile = dict(target_lockfile)
+    lockfile["framework_version"] = version
+    lockfile["installed_at"] = datetime.now(timezone.utc).isoformat()
+    lockfile["source"] = str(framework_root)
+    lockfile["managed_core_skills"] = core_skills
+    lockfile["managed_files"] = new_managed_files
 
+    # Atomic write: serialize the full JSON first, then write to a temp file in
+    # the same directory and replace the original only after success.
     lockfile_path = target / ".agentic.lock.json"
-    lockfile_path.write_text(json.dumps(lockfile, indent=2) + "\n", encoding="utf-8")
+    content = json.dumps(lockfile, indent=2) + "\n"
+    tmp_path = lockfile_path.with_name(lockfile_path.name + ".tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    os.replace(tmp_path, lockfile_path)
     print("WRITE    .agentic.lock.json")
 
     print()
@@ -436,11 +470,19 @@ def main() -> int:
         return 1
 
     if args.plan:
-        print_plan(framework_root, target, manifest)
+        try:
+            print_plan(framework_root, target, manifest)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
         return 0
 
     if args.apply:
-        return apply_plan(framework_root, target, manifest, args.force)
+        try:
+            return apply_plan(framework_root, target, manifest, args.force)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
 
     print_header(framework_root, target, manifest["framework_version"])
     print("No action selected. Use --plan to preview installation.")

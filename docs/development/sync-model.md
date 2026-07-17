@@ -163,7 +163,11 @@ por revisar.
 ### En repositorios consumidores
 
 El lockfile registra el estado instalado del framework además de la información
-de revisión de documentación. Tras `--apply`, `apply_plan()` escribe:
+de revisión de documentación. Tras `--apply`, `apply_plan()` actualiza
+únicamente las claves de su propiedad y conserva cualquier otra clave de nivel
+superior escrita por otros componentes:
+
+Claves gestionadas por `agentic-sync`:
 
 ```json
 {
@@ -177,6 +181,10 @@ de revisión de documentación. Tras `--apply`, `apply_plan()` escribe:
 }
 ```
 
+Claves externas conservadas (no gestionadas por sync): `documentation` y
+cualquier otra clave de nivel superior que exista previamente. `agentic-sync`
+no asume cuáles pueden ser esas claves; las preserva intactas.
+
 Los contenidos típicos incluyen:
 
 - versión del framework instalada;
@@ -189,6 +197,21 @@ El hash guardado por archivo permite distinguir, en una próxima ejecución, un
 genuino (el destino fue modificado de forma no rastreada).
 
 El formato exacto puede evolucionar con futuras versiones del framework.
+
+### Propiedades de escritura del lockfile
+
+`apply_plan()` escribe `.agentic.lock.json` de forma segura:
+
+- **Conservación de claves externas**: parte del lockfile existente y actualiza
+  solo las claves gestionadas. Nunca reconstruye el fichero desde cero.
+- **Escritura atómica**: serializa el JSON completo, lo escribe en un fichero
+  temporal `.agentic.lock.json.tmp` en el mismo directorio y lo reemplaza con
+  `os.replace` únicamente tras generar correctamente el JSON. Así no queda un
+  lockfile parcialmente escrito si el proceso falla a mitad.
+- **Lockfile inválido**: si `.agentic.lock.json` existe pero no es JSON válido o
+  su raíz no es un objeto, `load_target_lockfile()` lanza un `ValueError` con un
+  mensaje claro indicando el problema. El script termina con código de salida 1
+  **sin sobrescribir** el fichero, para que pueda corregirse manualmente.
 
 ## Resolución de conflictos
 

@@ -73,7 +73,6 @@ el lockfile del target:
 | `SKIP` | Idéntico al framework. | Nada. |
 | `CONFLICT` | Difiere del framework y del lockfile (cambio local no rastreado). | Lo deja intacto, salvo `--force`. |
 | `MISSING` | No existe en el framework. | Lo omite. |
-
 ## El lockfile (`.agentic.lock.json`)
 
 Tras `--apply`, el target recibe `.agentic.lock.json` con:
@@ -86,10 +85,18 @@ Tras `--apply`, el target recibe `.agentic.lock.json` con:
 
 El hash de cada archivo permite que, en la siguiente sincronización, el script
 distinga un `UPDATE` seguro (el archivo local coincide con el hash registrado)
-de un `CONFLICT` genuino (el archivo local fue modificado de forma no rastreada).
+de un `CONFLICT` genuino (el archivo local fue modificado de forma no
+rastreada).
+
+El lockfile es compartido con otras herramientas (por ejemplo, las skills
+`docs-init` y `docs-update` guardan ahí su baseline documental bajo la clave
+`documentation`). `agentic-sync` solo actualiza sus propias claves y conserva
+el resto sin modificarlo.
 
 No borres ni edites manualmente el lockfile si quieres conservar la detección
-correcta de conflictos.
+correcta de conflictos. Si el fichero existe pero está corrupto (JSON inválido
+o no es un objeto), `agentic-sync` no lo sobrescribe: muestra un error claro y
+termina para que lo corrijas a mano.
 
 ## Qué se gestiona y qué no
 
