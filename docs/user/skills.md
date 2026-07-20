@@ -17,7 +17,7 @@ Estas skills vienen con el framework y se instalan mediante `agentic-sync`:
 |-------|-------------|
 | `commit-work` | Revisa cambios, actualiza/valida la documentación y prepara un commit descriptivo. |
 | `docs-init` | Genera, adapta o completa la documentación integral del repositorio (agentes, desarrolladores, usuarios) y valida el README. |
-| `docs-update` | Revisa los cambios desde el último commit documentado y actualiza las capas documentales. |
+| `docs-update` | Revisa los cambios desde el último commit documentado, propone las actualizaciones necesarias y las aplica tras confirmación humana explícita. |
 
 ### Uso típico
 

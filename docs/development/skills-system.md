@@ -64,7 +64,7 @@ Sigue las instrucciones comunes en:
 |-------|-------------|
 | `commit-work` | Revisa cambios, actualiza/valida las capas documentales y prepara un commit descriptivo. |
 | `docs-init` | Inicializa, adapta o completa la documentación integral del repositorio (capas para agentes, desarrolladores y usuarios) y valida el README. |
-| `docs-update` | Revisa los cambios desde el último commit documentado, actualiza las capas y verifica su coherencia con el README. |
+| `docs-update` | Revisa los cambios desde el último commit documentado, propone las actualizaciones en las capas, las aplica tras confirmación humana explícita y verifica su coherencia con el README. |
 
 ## Principios
 
