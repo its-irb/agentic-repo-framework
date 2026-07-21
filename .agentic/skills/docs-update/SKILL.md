@@ -153,7 +153,21 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
 
    Después de presentar la propuesta completa, detente y solicita confirmación humana explícita.
 
-9. Si la invocación señala una funcionalidad, documento, ruta o afirmación concreta, trátala como foco explícito obligatorio y busca todas sus apariciones en las distintas capas. Este foco no sustituye el resto del proceso obligatorio.
+9. Si la invocación señala un ámbito concreto —por ejemplo, un fichero,
+   clase, función, script, comando, módulo, funcionalidad, flujo o afirmación—,
+   trátalo como alcance explícito de la revisión.
+
+   Limita el análisis y la propuesta a ese ámbito y al contexto estrictamente
+   necesario para comprenderlo y documentarlo correctamente.
+
+   Evalúa su impacto en las capas pertinentes. Revisa otras áreas únicamente
+   cuando sea necesario para evitar contradicciones directas o mantener la
+   coherencia del conocimiento documentado sobre ese ámbito.
+
+   No revises, completes ni propongas mejoras en áreas no relacionadas.
+
+   Mantén el flujo obligatorio de propuesta y confirmación humana antes de
+   modificar cualquier fichero.
 
 ## Autosuficiencia de las capas
 

@@ -89,9 +89,9 @@ de un `CONFLICT` genuino (el archivo local fue modificado de forma no
 rastreada).
 
 El lockfile es compartido con otras herramientas (por ejemplo, las skills
-`docs-init` y `docs-update` guardan ahí su baseline documental bajo la clave
-`documentation`). `agentic-sync` solo actualiza sus propias claves y conserva
-el resto sin modificarlo.
+`docs-init`, `docs-init-full` y `docs-update` guardan ahí su baseline documental
+bajo la clave `documentation`). `agentic-sync` solo actualiza sus propias claves
+y conserva el resto sin modificarlo.
 
 No borres ni edites manualmente el lockfile si quieres conservar la detección
 correcta de conflictos. Si el fichero existe pero está corrupto (JSON inválido

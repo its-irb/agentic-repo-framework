@@ -73,10 +73,15 @@ skills propias no se tocan.
 
 ## Primeros pasos tras instalar
 
-1. Invoca una skill core en tu arnés, por ejemplo `/docs-init` para generar la
-   documentación inicial del repo consumidor siguiendo la metodología.
-2. Consulta [skills.md](skills.md) para ver las skills core disponibles.
-3. Consulta [sync-guide.md](sync-guide.md) para mantener el framework actualizado
+1. Invoca `/docs-init` para crear la estructura documental básica del repo
+   consumidor (directorios y README mínimos siguiendo la metodología de tres
+   capas). Si necesitas una generación documental exhaustiva, invoca
+   `/docs-init-full` explícitamente.
+2. Para mantener o ampliar la documentación por áreas concretas, invoca
+   `/docs-update` con un ámbito (fichero, módulo, flujo o funcionalidad) y
+   revisa la propuesta por partes antes de aplicarla.
+3. Consulta [skills.md](skills.md) para ver las skills core disponibles.
+4. Consulta [sync-guide.md](sync-guide.md) para mantener el framework actualizado
    en el repo consumidor.
 
 ## Limitaciones

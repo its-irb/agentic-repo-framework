@@ -174,7 +174,7 @@ Claves gestionadas por `agentic-sync`:
   "framework_version": "0.1.0",
   "installed_at": "<ISO-8601>",
   "source": "<framework root path>",
-  "managed_core_skills": ["commit-work", "docs-init", "docs-update"],
+  "managed_core_skills": ["commit-work", "docs-init", "docs-init-full", "docs-update"],
   "managed_files": {
     "<ruta>": { "sha256": "<hash>" }
   }

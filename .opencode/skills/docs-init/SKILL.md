@@ -1,8 +1,12 @@
 ---
 name: docs-init
-description: Inicializa, adapta o completa la documentación integral del repositorio para agentes, desarrolladores y usuarios, y valida el README principal.
+description: Inicializa la estructura documental básica del repositorio y ejecuta la generación exhaustiva solo cuando se solicita explícitamente.
 ---
+
+# docs-init
 
 Sigue las instrucciones comunes en:
 
+```text
 .agentic/skills/docs-init/SKILL.md
+```

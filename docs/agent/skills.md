@@ -16,10 +16,11 @@ Al ejecutar `/<skill-name>` en un arnés:
 | Skill | Descripción |
 |-------|-------------|
 | `commit-work` | Revisa cambios, actualiza/valida las capas documentales y prepara un commit descriptivo. |
-| `docs-init` | Inicializa, adapta o completa la documentación integral del repositorio (capas para agentes, desarrolladores y usuarios) y valida el README. |
-| `docs-update` | Revisa los cambios desde el último commit documentado, propone las actualizaciones en las capas, las aplica tras confirmación humana explícita y verifica su coherencia con el README. |
+| `docs-init` | Inicializa la estructura documental básica (directorios y README mínimos para agentes, desarrollo y usuarios). Ejecuta `docs-init-full` solo cuando se solicita explícitamente documentación exhaustiva. |
+| `docs-init-full` | Genera, adapta o completa de forma exhaustiva la documentación integral del repositorio (capas para agentes, desarrolladores y usuarios) y valida el README. |
+| `docs-update` | Revisa los cambios desde el último commit documentado, o un ámbito explícito, y propone actualizaciones, completado o creación de documentación en las capas afectadas. Aplica solo tras confirmación humana. Útil para revisión por partes. |
 
-Estas tres skills son **Core Skills**: las mantiene el framework y se
+Estas cuatro skills son **Core Skills**: las mantiene el framework y se
 instalan/actualizan con `agentic-sync`.
 
 ## Estructura de una skill

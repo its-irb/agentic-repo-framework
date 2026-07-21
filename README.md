@@ -76,8 +76,9 @@ La sintaxis canónica coloca la acción antes de la ruta del target. Ver
 | Skill | Descripción |
 |-------|-------------|
 | `commit-work` | Revisa cambios, actualiza/valida documentación y prepara un commit descriptivo. |
-| `docs-init` | Inicializa, adapta o completa la documentación integral (agentes, desarrollo, usuarios) y valida el README. |
-| `docs-update` | Revisa los cambios desde el último commit documentado, propone las actualizaciones necesarias y las aplica tras confirmación humana explícita. |
+| `docs-init` | Inicializa la estructura documental básica (directorios y README mínimos para agentes, desarrollo y usuarios). Ejecuta `docs-init-full` solo cuando se solicita explícitamente documentación exhaustiva. |
+| `docs-init-full` | Genera, adapta o completa de forma exhaustiva la documentación integral del repositorio (agentes, desarrollo, usuarios) y valida el README. |
+| `docs-update` | Revisa los cambios desde el último commit documentado, o un ámbito explícito, y propone actualizaciones, completado o creación de documentación en las capas afectadas. Aplica solo tras confirmación humana. Útil para revisión por partes. |
 
 ## Documentación
 

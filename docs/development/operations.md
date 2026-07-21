@@ -89,8 +89,17 @@ conocimiento correspondiente en las tres capas durante la misma sesión:
 
 Sigue los principios de `docs/documentation-methodology.md`. La skill
 `docs-update` automatiza la revisión incremental desde el último commit
-documentado; `docs-init` realiza la revisión integral (útil al adaptar el
-repositorio al modelo de tres capas).
+documentado; `docs-init` crea la estructura documental básica (directorios y
+README mínimos); `docs-init-full` realiza la generación o adaptación integral
+(útil al incorporar el repositorio al modelo de tres capas o cuando se
+solicite documentación exhaustiva).
+
+`docs-update` también puede invocarse con **alcance explícito** sobre un área
+parcial (fichero, módulo, flujo, funcionalidad, etc.) para actualizar,
+completar o crear su documentación sin revisar áreas no relacionadas. Esta
+forma de uso permite a un humano revisar propuestas exhaustivas por partes sin
+cargar demasiados cambios a la vez, manteniendo el flujo de propuesta y
+confirmación.
 
 El baseline de revisión documental se registra en `.agentic.lock.json` (campo
 `documentation.last_reviewed_commit`).

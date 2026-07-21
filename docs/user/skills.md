@@ -16,15 +16,22 @@ Estas skills vienen con el framework y se instalan mediante `agentic-sync`:
 | Skill | Descripción |
 |-------|-------------|
 | `commit-work` | Revisa cambios, actualiza/valida la documentación y prepara un commit descriptivo. |
-| `docs-init` | Inicializa, adapta o completa la documentación integral del repositorio (agentes, desarrolladores, usuarios) y valida el README. |
-| `docs-update` | Revisa los cambios desde el último commit documentado, propone las actualizaciones necesarias y las aplica tras confirmación humana explícita. |
+| `docs-init` | Inicializa la estructura documental básica (directorios y README mínimos para agentes, desarrolladores y usuarios). Ejecuta `docs-init-full` solo cuando se solicita explícitamente documentación exhaustiva. |
+| `docs-init-full` | Genera, adapta o completa de forma exhaustiva la documentación integral del repositorio (agentes, desarrolladores, usuarios) y valida el README. |
+| `docs-update` | Revisa los cambios desde el último commit documentado, o un ámbito explícito, y propone actualizaciones, completado o creación de documentación. Aplica solo tras confirmación humana. Útil para revisión por partes. |
 
 ### Uso típico
 
-- `/docs-init` — la primera vez, para crear la documentación del repo consumidor
-  siguiendo la metodología de tres capas.
+- `/docs-init` — la primera vez, para crear la estructura documental básica del
+  repo consumidor (directorios y README mínimos siguiendo la metodología de
+  tres capas).
+- `/docs-init-full` — cuando se solicite explícitamente generar, adaptar o
+  completar la documentación integral del repositorio de forma exhaustiva.
 - `/docs-update` — tras cambios de código, para revisar y actualizar la
   documentación afectada.
+- `/docs-update <ámbito>` — para actualizar, completar o crear documentación de
+  un área parcial (fichero, módulo, flujo, funcionalidad, etc.) y revisar la
+  propuesta sin cargar demasiados cambios a la vez.
 - `/commit-work` — para preparar un commit revisando también el estado
   documental.
 
@@ -58,7 +65,7 @@ personal.
 
 Importante: `agentic-sync` podría sobrescribir `.agentic/skills/` si tus skills
 propias colisionan con nombres de Core Skills. Usa nombres distintos a los de
-las Core Skills (`commit-work`, `docs-init`, `docs-update`).
+las Core Skills (`commit-work`, `docs-init`, `docs-init-full`, `docs-update`).
 
 ## Mantener las skills actualizadas
 
