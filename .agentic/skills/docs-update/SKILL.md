@@ -108,6 +108,19 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
    No asumas que un cambio pertenece a una sola capa porque se originó en código interno o en una interfaz pública.
 
    Proyecta el conocimiento actualizado sobre todas las capas donde resulte relevante.
+   Para las áreas afectadas, evalúa también el impacto sobre su intención y su
+   utilidad:
+
+   - en la capa de desarrollo, comprueba si el cambio altera o aclara el propósito,
+   las razones de diseño, las responsabilidades, los límites, las restricciones,
+   los invariantes o las consecuencias de modificar esa área;
+   - en la capa de usuario, comprueba si el cambio altera los objetivos que pueden
+   alcanzarse, cuándo debe utilizarse cada flujo, los requisitos previos, la
+   elección entre alternativas, el resultado esperado, las limitaciones o la
+   recuperación ante errores.
+
+   No consideres suficiente actualizar únicamente listas de componentes, comandos,
+   funciones, opciones o pasos.
 
 6. Revisa la documentación existente y busca afirmaciones relacionadas con las áreas cambiadas.
 
@@ -130,6 +143,11 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
    - el cambio propuesto;
    - la evidencia que lo justifica;
    - las demás capas donde debe propagarse el mismo conocimiento.
+   - qué intención, decisión o restricción de diseño debe explicarse o actualizarse
+   para desarrolladores;
+   - qué objetivo del usuario resulta afectado y cómo debe explicarse el flujo
+   desde esa perspectiva;
+   - qué razones o contexto no pueden verificarse y requieren información humana.
 
    No modifiques ningún fichero en esta fase.
 
@@ -142,8 +160,13 @@ Si existe `documentation.last_reviewed_commit`, continúa con el proceso obligat
 Comprueba que, después de la actualización:
 
 - la documentación para agentes sigue siendo suficiente para el trabajo habitual sin depender de `docs/development/`;
-- la documentación para desarrolladores permite comprender y mantener el proyecto sin depender de `docs/agent/`;
-- la documentación para usuarios permite utilizar el producto sin consultar documentación técnica.
+- la documentación para desarrolladores permite comprender cómo funciona el
+  área afectada, para qué existe, cómo encaja en el sistema y qué decisiones,
+  restricciones o invariantes deben preservarse, sin depender de
+  `docs/agent/`;
+- la documentación para usuarios permite partir de un objetivo real, elegir el
+  flujo adecuado, completar la tarea, reconocer el resultado esperado y actuar
+  ante errores, sin consultar documentación técnica.
 
 La redundancia entre capas está permitida cuando sea necesaria para preservar esa autosuficiencia.
 
@@ -200,6 +223,35 @@ La ausencia de evidencia en el repositorio no es evidencia de que una afirmació
    Debes poder explicar qué evidencia confirma las afirmaciones relevantes.
 
 La documentación debe describir el estado actual del proyecto, no limitarse a cubrir el diff revisado.
+
+## Validación de intención y utilidad
+
+Para cada área afectada, no des la documentación por suficiente solo porque las
+afirmaciones sean correctas.
+
+Comprueba que:
+
+### Desarrollo
+
+- explica el propósito del área y no solo sus componentes;
+- relaciona la implementación con los flujos completos;
+- documenta decisiones, restricciones, invariantes y consecuencias relevantes;
+- distingue las razones verificadas de las que requieren confirmación humana.
+
+### Usuarios
+
+- presenta las funcionalidades dentro de los objetivos a los que sirven;
+- explica cuándo elegir cada flujo;
+- permite completar una tarea y reconocer su resultado;
+- incluye las limitaciones y la recuperación relevantes;
+- no utiliza como estructura principal una enumeración de pantallas, controles,
+  opciones o comandos.
+
+Si falta este contexto en un área afectada, incluye su incorporación en la
+propuesta de actualización.
+
+No inventes intención, motivaciones ni objetivos que no estén respaldados por
+el repositorio o por información humana.
 
 ## Coherencia entre capas
 

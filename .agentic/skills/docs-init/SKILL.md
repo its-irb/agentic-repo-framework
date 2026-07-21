@@ -89,34 +89,56 @@ La capa para agentes debe ser suficiente para el trabajo habitual sin obligar a 
 
 ### Desarrolladores
 
-Incluye el contexto necesario para comprender, mantener y ampliar el proyecto:
+Incluye el contexto necesario para comprender, mantener y ampliar el proyecto.
 
-- intención y arquitectura;
-- estructura y responsabilidades;
-- flujos completos;
-- decisiones y restricciones;
-- preparación del entorno;
-- ejecución, pruebas y depuración;
-- despliegue y operación;
-- extensibilidad y mantenimiento.
+Para cada área relevante, documenta desde la intención hacia la implementación:
 
-La capa para desarrolladores debe ser suficiente sin obligar a consultar `docs/agent/`.
+- qué problema o responsabilidad resuelve;
+- cómo encaja en el sistema completo;
+- por qué está estructurada de esa manera, cuando pueda verificarse;
+- qué decisiones, restricciones, invariantes o compromisos condicionan el
+  diseño;
+- qué componentes participan y cómo colaboran;
+- qué consecuencias tendría alterar sus límites o responsabilidades;
+- cómo se prepara, ejecuta, prueba, depura, despliega, opera y amplía.
+
+No conviertas esta capa en un catálogo de módulos, clases o funciones. Incluye
+referencias técnicas cuando sean necesarias, pero úsalas para explicar el
+diseño y los flujos del sistema.
+
+No inventes razones arquitectónicas. Si el repositorio permite verificar el
+comportamiento pero no la motivación, documenta el comportamiento y presenta
+la motivación como una cuestión pendiente de confirmación humana.
+
+La capa para desarrolladores debe ser suficiente sin obligar a consultar
+`docs/agent/`.
 
 ### Usuarios
 
-Incluye lo necesario para utilizar correctamente el producto según su superficie real:
+Identifica primero qué objetivos reales puede alcanzar una persona mediante el
+producto.
 
-- instalación o acceso;
-- primeros pasos;
-- tareas habituales;
-- comandos, opciones o controles visibles;
-- configuración;
-- capacidades y limitaciones;
-- errores frecuentes y recuperación.
+Organiza la documentación principalmente alrededor de esos objetivos y casos
+de uso. Para cada uno, explica:
 
-La capa para usuarios debe ser suficiente sin obligar a consultar documentación técnica.
+- qué consigue el usuario;
+- cuándo debe utilizarlo;
+- qué necesita antes de empezar;
+- qué flujo o funcionalidad debe elegir;
+- cómo realizar la tarea;
+- cuál es el resultado esperado;
+- qué capacidades y limitaciones existen;
+- qué hacer ante errores o resultados inesperados.
 
-La documentación de usuario puede dirigirse a usuarios técnicos cuando el producto lo requiera. Eso no elimina la necesidad de una guía de uso completa.
+Explica los comandos, opciones y controles visibles dentro del objetivo al que
+sirven. No estructures la guía principal como una descripción pantalla por
+pantalla, función por función o botón por botón.
+
+Cuando existan varias formas parecidas de actuar, ayuda al usuario a elegir la
+adecuada explicando para qué sirve cada una.
+
+La capa para usuarios debe permitir utilizar el producto sin consultar
+documentación técnica.
 
 ## Reutilización y adaptación
 
@@ -154,8 +176,6 @@ La redundancia entre capas está permitida cuando sea necesaria para que cada un
 
 Antes de sobrescribir, mover, dividir o renombrar documentación existente, presenta una propuesta breve y pide confirmación al usuario.
 
-La propuesta debe explicar, para cada cambio relevante:
-
 La propuesta debe explicar:
 
 - qué áreas de conocimiento se han identificado;
@@ -169,6 +189,12 @@ La propuesta debe explicar:
 - qué referencias deberán actualizarse;
 - qué artefactos operativos se conservan aunque parte de su contenido también
   se documente.
+- qué objetivos principales de los usuarios se han identificado y cómo se
+  organizará la documentación alrededor de ellos;
+- qué intenciones, decisiones y restricciones de diseño deben explicarse en la
+  documentación para desarrolladores;
+- qué razones importantes no pueden verificarse desde el repositorio y
+  requieren información humana.
 
 La documentación existente es una fuente de conocimiento, no una plantilla que deba conservarse ni una estructura que deba mantenerse.
 
@@ -200,10 +226,16 @@ Antes de dar la inicialización por terminada:
 5. Busca referencias a rutas antiguas en documentación, skills, wrappers y otros ficheros del repositorio.
 6. Comprueba que no se ha perdido información útil.
 7. Comprueba que la documentación para agentes sigue siendo compacta sin resultar incompleta.
-8. Comprueba que la documentación para desarrolladores contiene suficiente contexto técnico.
-9. Comprueba que la documentación de usuario cubre la superficie de uso real.
-10. Comprueba que ningún fichero propuesto para eliminar, sustituir o mover cumple una función operativa, contractual o de integración que no pueda asumir la documentación nueva.
-11. Marca como pendiente cualquier información que no pueda verificarse.
+8. Comprueba que la documentación para desarrolladores no se limita a describir
+   componentes e implementación, sino que explica su propósito, relaciones,
+   decisiones, restricciones y consecuencias cuando estas puedan verificarse.
+9. Comprueba que la documentación de usuario permite partir de un objetivo,
+   elegir el flujo adecuado, completar la tarea y reconocer el resultado
+   esperado, en lugar de limitarse a describir la interfaz.
+10. Comprueba que las razones o intenciones no respaldadas por evidencias no se
+    hayan presentado como hechos.
+11. Comprueba que ningún fichero propuesto para eliminar, sustituir o mover cumple una función operativa, contractual o de integración que no pueda asumir la documentación nueva.
+12. Marca como pendiente cualquier información que no pueda verificarse.
 
 Para las afirmaciones técnicas o funcionales relevantes, identifica su fuente de verdad en:
 

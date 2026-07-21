@@ -1,6 +1,6 @@
 ---
 name: docs-init
-description: Genera documentación mínima inicial del repositorio.
+description: Inicializa, adapta o completa la documentación integral del repositorio para agentes, desarrolladores y usuarios, y valida el README principal.
 ---
 
 Sigue las instrucciones comunes en:
