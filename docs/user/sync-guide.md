@@ -88,12 +88,11 @@ Tras `--apply`, el target recibe `.agentic.lock.json` con:
 La trazabilidad representa el origen y la revisión exacta del framework usado
 en el último `--apply` completado correctamente. La URL canónica se
 **re-resuelve** en cada sincronización: la URL configurada localmente en
-`origin` es solo el punto de partida; el script consulta la ubicación actual
-en GitHub siguiendo sus redirecciones. Así, si el repositorio framework se ha
-transferido (p. ej. de una cuenta a una organización) y GitHub redirige a la
-nueva ubicación, el siguiente `--apply` correcto sustituye la URL antigua del
-lock por la nueva, aunque la URL configurada localmente siga siendo la
-antigua. La URL se guarda normalizada como
+`origin` es solo el punto de partida; el script ejecuta `git ls-remote` contra
+ella y, si GitHub redirige (p. ej. tras una transferencia de cuenta a
+organización), registra la nueva ubicación. Así, el siguiente `--apply` correcto
+sustituye la URL antigua del lock por la nueva, aunque la URL configurada
+localmente siga siendo la antigua. La URL se guarda normalizada como
 `https://github.com/<owner>/<repo>.git`.
 
 Esto permitirá en el futuro comprobar si el repositorio destino va
@@ -117,11 +116,15 @@ termina para que lo corrijas a mano.
 
 Si el repositorio framework está en un estado git no fiable (HEAD detached, sin
 remoto `origin`, o sin commits), o el remoto `origin` no es una URL GitHub
-soportada, o no se puede verificar la URL canónica (sin red, timeout, error
-HTTP, o repo privado/inaccesible), `--apply` aborta antes de cambiar nada y
-avisa claramente; no se inventa la trazabilidad ni se marca un commit no
-aplicado. Verificar la URL canónica requiere red, así que `--apply` necesita
+soportada, o `git ls-remote` falla (sin red, error de TLS, repositorio
+privado/inexistente), `--apply` aborta antes de cambiar nada y avisa
+claramente; no se inventa la trazabilidad ni se marca un commit no aplicado.
+Verificar la URL canónica requiere red, así que `--apply` necesita
 conectividad a GitHub.
+
+La verificación usa el propio `git` (ya es un requisito del framework) y
+reutiliza su configuración TLS y credenciales. No requiere instalar
+`certifi`, `truststore` ni ningún paquete de certificados de Python.
 
 ## Qué se gestiona y qué no
 

@@ -9,9 +9,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -123,8 +121,8 @@ def _parse_github_remote(url: str) -> tuple[str, str] | None:
     containing percent-escapes are handled, and segments are kept verbatim
     (case preserved).
 
-    This is the only piece of GitHub knowledge in the script; it is the
-    starting point for resolving the canonical URL of the framework repository.
+    This validates that the configured origin is a GitHub remote before the
+    canonical resolution attempts any network call.
     """
     candidates: list[tuple[str, str, str]] = []
 
@@ -158,86 +156,188 @@ def _parse_github_remote(url: str) -> tuple[str, str] | None:
     return None
 
 
-def _resolve_github_canonical(owner: str, repo: str) -> str:
-    """Resolve the canonical GitHub location of a repository.
+def _ssh_to_https(url: str) -> str | None:
+    """Convert a GitHub SSH remote URL to its HTTPS equivalent.
 
-    Issues an anonymous HTTP ``HEAD`` against the repository's web URL
-    (``https://github.com/<owner>/<repo>``) and follows server-side redirects
-    (3xx, including the 301 GitHub emits after a repo transfer). The final URL
-    is parsed back into ``(owner, repo)``: when GitHub has moved the repo, the
-    final URL reflects the new location, and that is the canonical value.
+    Supports:
+    - SSH scp-like:  ``git@github.com:owner/repo.git``  (with optional user@)
+    - SSH explicit:  ``ssh://[user@]github.com/owner/repo.git``
 
-    Returns the canonical git URL in normalized form:
-    ``https://github.com/<owner>/<repo>.git``.
-
-    Raises ValueError with a clear message if the canonical location cannot be
-    determined reliably: network/timeout errors (URLError), non-redirect HTTP
-    failures (HTTPError, non-2xx), an unexpected final URL, or an unreachable
-    final path. No value is fabricated: callers must abort the sync on failure.
-
-    Anonymous access only works for public repositories; a private repo yields
-    404 and is treated as an unreliable origin (the framework repo is public).
+    Returns the HTTPS URL ``https://github.com/owner/repo.git`` (always with a
+    trailing ``.git``), or None if ``url`` is not a GitHub SSH remote. HTTPS
+    URLs are passed through unchanged by the caller (not handled here).
     """
-    web_url = f"https://github.com/{owner}/{repo}"
-    req = urllib.request.Request(web_url, method="HEAD")
-    req.add_header("User-Agent", "agentic-sync/0.1 (+traceability)")
+    # SSH scp-like: [user@]github.com:owner/repo[.git]
+    m = re.match(r"^(?:[^@\s]+@)?github\.com:([^/]+)/([^/]+?)(?:\.git)?$", url)
+    if m:
+        owner = urllib.parse.unquote(m.group(1))
+        repo = urllib.parse.unquote(m.group(2))
+        return f"https://github.com/{owner}/{repo}.git"
+
+    # SSH explicit: ssh://[user@]github.com/owner/repo[.git]
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            final_url = resp.geturl()
-            status = getattr(resp, "status", 200)
-    except urllib.error.HTTPError as exc:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError:
+        return None
+    if parsed.scheme == "ssh" and parsed.hostname == "github.com":
+        parts = [p for p in parsed.path.split("/") if p != ""]
+        if len(parts) == 2:
+            owner = urllib.parse.unquote(parts[0])
+            repo = urllib.parse.unquote(parts[1])
+            if repo.endswith(".git"):
+                repo = repo[: -len(".git")]
+            return f"https://github.com/{owner}/{repo}.git"
+
+    return None
+
+
+# Matches the git stderr line emitted when an HTTP redirect is followed:
+#   warning: redirecting to https://github.com/<owner>/<repo>.git/
+# Captures the raw URL token (validated/normalized separately). Tolerant of a
+# trailing slash; the URL may or may not end with ``.git``.
+_REDIRECT_WARNING_RE = re.compile(
+    r"^warning: redirecting to (\S+)\s*$",
+    re.MULTILINE,
+)
+
+
+def _normalize_github_https(url: str) -> str:
+    """Validate and normalize a GitHub HTTPS URL to canonical git form.
+
+    Accepts ``https://github.com/<owner>/<repo>`` with or without a trailing
+    ``.git`` and with or without a trailing ``/``. Returns the canonical form
+    ``https://github.com/<owner>/<repo>.git``. Raises ValueError if the URL is
+    not a valid GitHub HTTPS repository URL (wrong host, too few segments,
+    empty owner/repo, or a non-HTTPS scheme).
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError as exc:
         raise ValueError(
-            f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: HTTP {exc.code} ({web_url}). "
-            f"The repository may be private, deleted, or the network may be "
-            f"blocking access. agentic-sync will not write an unverified URL."
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise ValueError(
-            f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: network error ({exc.reason}). "
-            f"agentic-sync requires network access to verify the remote "
-            f"origin. Ensure connectivity and retry."
-        ) from exc
-    except TimeoutError as exc:
-        raise ValueError(
-            f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: request timed out. "
-            f"Ensure network connectivity and retry."
+            f"Cannot interpret GitHub URL {url!r}: invalid URL ({exc})."
         ) from exc
 
-    if status is not None and not (200 <= status < 400):
+    if parsed.scheme != "https" or parsed.hostname != "github.com":
         raise ValueError(
-            f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: unexpected HTTP status {status} ({web_url})."
-        )
-
-    parsed = urllib.parse.urlparse(final_url)
-    if parsed.hostname != "github.com":
-        raise ValueError(
-            f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: redirect left github.com "
-            f"(final host: {parsed.hostname!r})."
+            f"Cannot interpret GitHub URL {url!r}: not an HTTPS URL on "
+            f"github.com (scheme={parsed.scheme!r}, host={parsed.hostname!r})."
         )
 
     parts = [p for p in parsed.path.split("/") if p != ""]
     if len(parts) < 2:
         raise ValueError(
-            f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: unexpected final URL {final_url!r}."
+            f"Cannot interpret GitHub URL {url!r}: missing owner/repo segments."
         )
 
-    canon_owner = urllib.parse.unquote(parts[0])
-    canon_repo = urllib.parse.unquote(parts[1])
-    if canon_repo.endswith(".git"):
-        canon_repo = canon_repo[: -len(".git")]
-    if canon_owner == "" or canon_repo == "":
+    owner = urllib.parse.unquote(parts[0])
+    repo = urllib.parse.unquote(parts[1])
+    if repo.endswith(".git"):
+        repo = repo[: -len(".git")]
+    if owner == "" or repo == "":
+        raise ValueError(
+            f"Cannot interpret GitHub URL {url!r}: empty owner or repo."
+        )
+
+    return f"https://github.com/{owner}/{repo}.git"
+
+
+def _run_git_lsremote(https_url: str) -> tuple[int, str, str]:
+    """Run ``git ls-remote <url> HEAD`` in a controlled environment.
+
+    Returns ``(returncode, stdout, stderr)``. The environment forces
+    ``LC_ALL=C`` so any parsed message has a stable English format, and
+    ``GIT_TERMINAL_PROMPT=0`` so git never blocks waiting for credentials
+    interactively (a non-interactive failure is preferable to a hang).
+
+    This reuses Git's own HTTPS transport, TLS configuration and credentials
+    already available on the machine, instead of relying on the Python
+    interpreter's certificate bundle.
+    """
+    env = {**os.environ, "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0"}
+    result = subprocess.run(
+        ["git", "ls-remote", https_url, "HEAD"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+def _resolve_github_canonical(configured_url: str) -> str:
+    """Resolve the canonical GitHub location of a repository via git ls-remote.
+
+    The configured ``origin`` URL is the **starting point**. If it is an SSH
+    GitHub URL, it is converted to its HTTPS equivalent for the remote query
+    (the framework repository is public, so HTTPS access works without
+    credentials). ``git ls-remote <url> HEAD`` is then executed.
+
+    Git follows HTTP redirects issued by GitHub (e.g. after a repository
+    transfer) and emits on stderr, for each redirect, a line of the form::
+
+        warning: redirecting to https://github.com/<owner>/<repo>.git/
+
+    If one or more such warnings appear, the **last** redirect URL is the final
+    destination and is used as the canonical URL. If no warning appears and
+    ``git ls-remote`` succeeds, the queried URL itself is canonical.
+
+    The result is always normalized to ``https://github.com/<owner>/<repo>.git``.
+
+    Raises ValueError with a clear message if:
+    - the configured URL is not a GitHub remote (SSH or HTTPS on github.com);
+    - ``git ls-remote`` fails (non-zero exit; includes network, TLS, auth, or
+      nonexistent-repository errors);
+    - a redirect warning points to a URL that is not a valid GitHub HTTPS
+      repository URL;
+    - the final URL cannot be normalized.
+
+    No value is fabricated: callers must abort the sync on failure.
+    """
+    parsed = _parse_github_remote(configured_url)
+    if parsed is None:
+        raise ValueError(
+            f"Cannot determine the framework canonical remote URL reliably: "
+            f"the configured 'origin' URL {configured_url!r} is not a "
+            f"supported GitHub remote (SSH or HTTPS on github.com). "
+            f"agentic-sync only resolves GitHub origins."
+        )
+
+    # Use HTTPS for the remote query. SSH URLs are converted; HTTPS URLs are
+    # normalized (accepts with/without .git and trailing slash).
+    if configured_url.startswith("https://"):
+        query_url = _normalize_github_https(configured_url)
+    else:
+        converted = _ssh_to_https(configured_url)
+        if converted is None:
+            raise ValueError(
+                f"Cannot determine the framework canonical remote URL reliably: "
+                f"the configured 'origin' URL {configured_url!r} could not be "
+                f"converted to HTTPS for remote resolution."
+            )
+        query_url = converted
+
+    rc, _stdout, stderr = _run_git_lsremote(query_url)
+    if rc != 0:
+        detail = stderr.strip()
+        if len(detail) > 400:
+            detail = detail[:400] + "..."
         raise ValueError(
             f"Cannot resolve the canonical GitHub URL for "
-            f"{owner}/{repo}: empty owner or repo in {final_url!r}."
+            f"{query_url!r}: git ls-remote failed (exit {rc}). "
+            f"The repository may be private, deleted, or the network/TLS "
+            f"configuration may be blocking access. "
+            f"agentic-sync will not write an unverified URL. "
+            f"git output: {detail}"
         )
 
-    return f"https://github.com/{canon_owner}/{canon_repo}.git"
+    # Extract redirect URLs from stderr. If multiple redirects occurred, the
+    # last one is the final destination.
+    redirects = _REDIRECT_WARNING_RE.findall(stderr)
+    if redirects:
+        final_url = redirects[-1]
+    else:
+        final_url = query_url
+
+    return _normalize_github_https(final_url)
 
 
 def resolve_framework_origin(framework_root: Path) -> dict[str, str]:
@@ -249,25 +349,25 @@ def resolve_framework_origin(framework_root: Path) -> dict[str, str]:
 
     - ``framework_remote_url``: canonical GitHub git URL of the framework
       repository, resolved from the locally configured ``origin`` remote. The
-      configured URL is only the **starting point**: it is parsed into
-      ``(owner, repo)`` and the canonical location is obtained by following
-      GitHub's redirects on the web URL. Thus a transferred repository (old URL
-      still configured locally but GitHub redirects to the new location) yields
-      the new canonical URL. The value is normalized to
-      ``https://github.com/<owner>/<repo>.git`` regardless of the input
-      transport (SSH or HTTPS). Re-resolved on every sync, so the stored value
-      is always replaced with the current canonical location.
+      configured URL is only the **starting point**: it is converted to HTTPS
+      (if SSH) and ``git ls-remote`` is run against it. Git follows GitHub's
+      HTTP redirects (e.g. after a transfer) and the final redirect URL, or the
+      queried URL if no redirect occurs, is recorded. Thus a transferred
+      repository (old URL still configured locally but GitHub redirects to the
+      new location) yields the new canonical URL. The value is normalized to
+      ``https://github.com/<owner>/<repo>.git``. Re-resolved on every sync, so
+      the stored value is always replaced with the current canonical location.
     - ``framework_branch``: branch currently checked out in the framework
       repository. A detached HEAD is rejected.
     - ``framework_commit``: full SHA of HEAD in the framework repository.
 
     Raises ValueError with a clear message if any of the three cannot be
     determined reliably. This covers: missing ``origin`` remote, detached HEAD,
-    empty repository with no commits, non-GitHub remote URL, network/timeout
-    errors, HTTP failures (including private/inaccessible repos returning 404),
-    or an unexpected redirect target. ``apply_plan`` calls this before touching
-    the target, so an unreliable origin halts the sync without leaving partial
-    state and without writing fabricated or ambiguous data to the lockfile.
+    empty repository with no commits, non-GitHub remote URL, ``git ls-remote``
+    failure (network, TLS, auth, nonexistent repo), or an unnormalizable final
+    URL. ``apply_plan`` calls this before touching the target, so an unreliable
+    origin halts the sync without leaving partial state and without writing
+    fabricated or ambiguous data to the lockfile.
     """
     rc, branch = _run_git(framework_root, ["symbolic-ref", "--quiet", "--short", "HEAD"])
     if rc != 0 or not branch:
@@ -293,23 +393,14 @@ def resolve_framework_origin(framework_root: Path) -> dict[str, str]:
             f"Configure an 'origin' remote before syncing."
         )
 
-    parsed = _parse_github_remote(configured_url)
-    if parsed is None:
-        raise ValueError(
-            f"Cannot determine the framework canonical remote URL reliably: "
-            f"the configured 'origin' URL {configured_url!r} is not a "
-            f"supported GitHub remote (SSH or HTTPS on github.com). "
-            f"agentic-sync only resolves GitHub origins."
-        )
-
-    owner, repo = parsed
-    canonical_url = _resolve_github_canonical(owner, repo)
+    canonical_url = _resolve_github_canonical(configured_url)
 
     return {
         "framework_remote_url": canonical_url,
         "framework_branch": branch,
         "framework_commit": commit,
     }
+
 
 
 def load_manifest(framework_root: Path) -> dict:

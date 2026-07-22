@@ -2,16 +2,17 @@
 
 These tests verify that ``--apply`` records the framework origin (canonical
 remote URL, branch and full commit SHA) in the target's ``.agentic.lock.json``
-on every successful sync, that the canonical URL is resolved by following
-GitHub redirects (so a transferred repo records the new location), that the
-SSH and HTTPS remote formats are supported, that a failed apply never registers
-a new commit, and that an unreliable framework git state or an unresolvable
-canonical URL halts the sync with a clear error before touching the target.
+on every successful sync, that the canonical URL is resolved via
+``git ls-remote`` (following GitHub's ``warning: redirecting to`` messages so a
+transferred repo records the new location), that the SSH and HTTPS remote
+formats are supported, that a failed apply never registers a new commit, and
+that an unreliable framework git state or an unresolvable canonical URL halts
+the sync with a clear error before touching the target.
 
 They build a synthetic framework git repository under ``tmp_path`` so the
 tests can advance commits, change the origin URL and break the git state
-without touching the real framework repository. The GitHub canonical resolver
-(``_resolve_github_canonical``) is monkeypatched so the suite is fully offline
+without touching the real framework repository. ``subprocess.run`` is
+monkeypatched for the ``git ls-remote`` call so the suite is fully offline
 and deterministic; the live network behavior of the resolver is exercised
 manually.
 """
@@ -129,17 +130,32 @@ def _load_manifest(fw: Path) -> dict:
     return json.loads((fw / ".agentic-framework.json").read_text(encoding="utf-8"))
 
 
-def _patch_resolver(monkeypatch, agentic_sync, canonical_url: str) -> None:
-    """Monkeypatch the GitHub canonical resolver to a fixed offline value.
+class _FakeCompleted:
+    """Mimics subprocess.CompletedProcess for the git ls-remote stub."""
 
-    Makes the suite fully deterministic and offline: ``resolve_framework_origin``
-    still exercises parsing + git introspection, but the network step is stubbed.
+    def __init__(self, returncode: int, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _patch_lsremote(monkeypatch, agentic_sync, *, returncode: int = 0,
+                    stdout: str = "", stderr: str = "") -> None:
+    """Monkeypatch ``subprocess.run`` as used by ``_run_git_lsremote``.
+
+    Only the ``git ls-remote`` invocation is stubbed: the fake inspects the
+    command argv and only responds to ``ls-remote``; any other git call is
+    delegated to the real ``subprocess.run`` so the synthetic framework's
+    branch/commit/remote introspection keeps working.
     """
-    monkeypatch.setattr(
-        agentic_sync,
-        "_resolve_github_canonical",
-        lambda owner, repo: canonical_url,
-    )
+    real_run = subprocess.run
+
+    def _fake(args, *rest, **kw):
+        if args[:3] == ["git", "ls-remote", *args[2:3]] or (len(args) >= 2 and args[0] == "git" and args[1] == "ls-remote"):
+            return _FakeCompleted(returncode, stdout, stderr)
+        return real_run(args, *rest, **kw)
+
+    monkeypatch.setattr(agentic_sync.subprocess, "run", _fake)
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +185,9 @@ def test_parse_github_remote_supported_formats(agentic_sync, url, expected):
     [
         "https://gitlab.com/org/repo.git",
         "git@gitlab.com:org/repo.git",
-        "https://github.com/org/repo/sub.git",   # too many segments
+        "https://github.com/org/repo/sub.git",
         "file:///path/to/repo",
-        "git@github.com:org",                     # missing repo
+        "git@github.com:org",
         "",
     ],
 )
@@ -181,103 +197,245 @@ def test_parse_github_remote_rejects_unsupported(agentic_sync, url):
 
 
 # ---------------------------------------------------------------------------
-# _resolve_github_canonical behavior (monkeypatched urlopen, no real network)
+# _ssh_to_https unit tests
 # ---------------------------------------------------------------------------
 
 
-class _FakeResp:
-    """Minimal context manager mimicking urllib's response object."""
-
-    def __init__(self, final_url: str, status: int = 200):
-        self._final_url = final_url
-        self.status = status
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def geturl(self):
-        return self._final_url
-
-
-def _patch_urlopen(monkeypatch, agentic_sync, final_url: str, status: int = 200):
-    """Monkeypatch ``urllib.request.urlopen`` as used by the resolver."""
-
-    def _fake(req, timeout=None):
-        return _FakeResp(final_url, status)
-
-    monkeypatch.setattr(agentic_sync.urllib.request, "urlopen", _fake)
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("git@github.com:org/repo.git", "https://github.com/org/repo.git"),
+        ("git@github.com:org/repo", "https://github.com/org/repo.git"),
+        ("ssh://git@github.com/org/repo.git", "https://github.com/org/repo.git"),
+        ("ssh://git@github.com/org/repo", "https://github.com/org/repo.git"),
+        ("https://github.com/org/repo.git", None),
+        ("https://gitlab.com/org/repo.git", None),
+        ("file:///path/to/repo", None),
+    ],
+)
+def test_ssh_to_https(agentic_sync, url, expected):
+    """SSH GitHub URLs convert to HTTPS; non-SSH/non-GitHub yield None."""
+    assert agentic_sync._ssh_to_https(url) == expected
 
 
-def test_resolve_canonical_no_redirect_keeps_url(agentic_sync, monkeypatch):
-    """A public repo with no transfer: final URL == requested URL."""
-    _patch_urlopen(monkeypatch, agentic_sync,
-                   "https://github.com/org/repo", status=200)
-    assert agentic_sync._resolve_github_canonical("org", "repo") \
+# ---------------------------------------------------------------------------
+# _normalize_github_https unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://github.com/org/repo.git", "https://github.com/org/repo.git"),
+        ("https://github.com/org/repo", "https://github.com/org/repo.git"),
+        ("https://github.com/org/repo.git/", "https://github.com/org/repo.git"),
+        ("https://github.com/org/repo/", "https://github.com/org/repo.git"),
+    ],
+)
+def test_normalize_github_https_accepts_with_without_git_and_slash(agentic_sync, url, expected):
+    """.git and trailing slash are optional; output is always normalized."""
+    assert agentic_sync._normalize_github_https(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://github.com/org/repo.git",        # wrong scheme
+        "https://gitlab.com/org/repo.git",       # wrong host
+        "https://github.com/org",                # missing repo
+        "https://github.com/",                   # missing segments
+        "ssh://git@github.com/org/repo.git",     # SSH, not HTTPS
+        "not a url",
+    ],
+)
+def test_normalize_github_https_rejects_invalid(agentic_sync, url):
+    """Non-HTTPS, non-github.com, or malformed URLs raise ValueError."""
+    with pytest.raises(ValueError):
+        agentic_sync._normalize_github_https(url)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_github_canonical behavior (monkeypatched subprocess.run, no network)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_canonical_https_no_redirect_keeps_url(agentic_sync, monkeypatch):
+    """HTTPS remote, no redirect warning, rc=0 -> URL canónica = la consultada."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr="")
+    assert agentic_sync._resolve_github_canonical("https://github.com/org/repo.git") \
         == "https://github.com/org/repo.git"
 
 
-def test_resolve_canonical_follows_redirect_to_new_location(agentic_sync, monkeypatch):
-    """A 301 transfer (old owner -> new owner) records the NEW canonical URL.
+def test_resolve_canonical_ssh_normalized_to_https(agentic_sync, monkeypatch):
+    """SSH remote is converted to HTTPS before the git ls-remote call."""
+    captured: dict = {}
 
-    This is the core correction: the locally configured URL stays 'old/repo'
-    but GitHub redirects to 'new/repo'; the lock must record 'new/repo'.
-    """
-    _patch_urlopen(monkeypatch, agentic_sync,
-                   "https://github.com/new-org/repo", status=200)
-    assert agentic_sync._resolve_github_canonical("old-org", "repo") \
+    real_run = subprocess.run
+
+    def _fake(args, *rest, **kw):
+        if len(args) >= 2 and args[0] == "git" and args[1] == "ls-remote":
+            captured["url"] = args[2]
+            return _FakeCompleted(0, "abc123\tHEAD\n", "")
+        return real_run(args, *rest, **kw)
+
+    monkeypatch.setattr(agentic_sync.subprocess, "run", _fake)
+
+    result = agentic_sync._resolve_github_canonical("git@github.com:org/repo.git")
+    assert result == "https://github.com/org/repo.git"
+    # The query URL passed to git ls-remote was the HTTPS form.
+    assert captured["url"] == "https://github.com/org/repo.git"
+
+
+def test_resolve_canonical_follows_redirect_warning(agentic_sync, monkeypatch):
+    """A 'warning: redirecting to' line records the NEW canonical URL."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr="warning: redirecting to https://github.com/new-org/repo.git/\n")
+    assert agentic_sync._resolve_github_canonical("https://github.com/old-org/repo.git") \
         == "https://github.com/new-org/repo.git"
 
 
-def test_resolve_canonical_http_error_aborts(agentic_sync, monkeypatch):
-    """A 404 (private/inexistent repo) raises ValueError, no fabricated URL."""
-    import urllib.error
+def test_resolve_canonical_redirect_without_git_suffix(agentic_sync, monkeypatch):
+    """Redirect URL without .git is normalized to include .git."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr="warning: redirecting to https://github.com/new-org/repo/\n")
+    assert agentic_sync._resolve_github_canonical("https://github.com/old-org/repo.git") \
+        == "https://github.com/new-org/repo.git"
 
-    def _fake(req, timeout=None):
-        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
 
-    monkeypatch.setattr(agentic_sync.urllib.request, "urlopen", _fake)
+def test_resolve_canonical_uses_last_redirect_when_multiple(agentic_sync, monkeypatch):
+    """Multiple redirects: the last one is the final destination."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr=(
+                        "warning: redirecting to https://github.com/mid/repo.git/\n"
+                        "warning: redirecting to https://github.com/final/repo.git/\n"
+                    ))
+    assert agentic_sync._resolve_github_canonical("https://github.com/old/repo.git") \
+        == "https://github.com/final/repo.git"
+
+
+def test_resolve_canonical_lsremote_failure_aborts(agentic_sync, monkeypatch):
+    """git ls-remote non-zero exit -> ValueError, no fabricated URL."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=128,
+                    stdout="",
+                    stderr="fatal: repository 'https://github.com/org/repo.git' not found\n")
     with pytest.raises(ValueError) as exc:
-        agentic_sync._resolve_github_canonical("org", "repo")
-    assert "404" in str(exc.value)
+        agentic_sync._resolve_github_canonical("https://github.com/org/repo.git")
+    assert "git ls-remote failed" in str(exc.value)
+    assert "not found" in str(exc.value)
 
 
-def test_resolve_canonical_network_error_aborts(agentic_sync, monkeypatch):
-    """A URLError (offline / timeout) raises ValueError, no fabricated URL."""
-    import urllib.error
-
-    def _fake(req, timeout=None):
-        raise urllib.error.URLError("getaddrinfo failed")
-
-    monkeypatch.setattr(agentic_sync.urllib.request, "urlopen", _fake)
+def test_resolve_canonical_redirect_to_non_github_aborts(agentic_sync, monkeypatch):
+    """Redirect to a non-github.com host -> ValueError."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr="warning: redirecting to https://example.com/org/repo.git/\n")
     with pytest.raises(ValueError) as exc:
-        agentic_sync._resolve_github_canonical("org", "repo")
-    assert "network" in str(exc.value).lower() or "getaddrinfo" in str(exc.value)
+        agentic_sync._resolve_github_canonical("https://github.com/org/repo.git")
+    assert "github.com" in str(exc.value) or "HTTPS" in str(exc.value)
 
 
-def test_resolve_canonical_redirect_off_github_aborts(agentic_sync, monkeypatch):
-    """A redirect to a non-github.com host is rejected."""
-    _patch_urlopen(monkeypatch, agentic_sync,
-                   "https://example.com/org/repo", status=200)
+def test_resolve_canonical_malformed_redirect_warning_aborts(agentic_sync, monkeypatch):
+    """A redirect warning whose captured URL cannot be normalized -> ValueError.
+
+    The regex extracts the token after 'redirecting to'; the validator then
+    rejects it. A non-github.com host exercises this path.
+    """
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr="warning: redirecting to https://gitlab.com/org/repo.git/\n")
+    with pytest.raises(ValueError):
+        agentic_sync._resolve_github_canonical("https://github.com/org/repo.git")
+
+
+def test_resolve_canonical_non_github_remote_aborts(agentic_sync, monkeypatch):
+    """A non-GitHub origin URL is rejected before any git ls-remote call."""
+    called: list[str] = []
+
+    real_run = subprocess.run
+
+    def _fake(args, *rest, **kw):
+        if len(args) >= 2 and args[0] == "git" and args[1] == "ls-remote":
+            called.append("ls-remote")
+            return _FakeCompleted(0, "abc\tHEAD\n", "")
+        return real_run(args, *rest, **kw)
+
+    monkeypatch.setattr(agentic_sync.subprocess, "run", _fake)
+
     with pytest.raises(ValueError) as exc:
-        agentic_sync._resolve_github_canonical("org", "repo")
-    assert "github.com" in str(exc.value) or "host" in str(exc.value).lower()
+        agentic_sync._resolve_github_canonical("https://gitlab.com/org/repo.git")
+    assert "github" in str(exc.value).lower() or "supported" in str(exc.value).lower()
+    assert called == []  # no remote call attempted
+
+
+def test_resolve_canonical_passes_lc_all_c_and_no_prompt(agentic_sync, monkeypatch):
+    """The git ls-remote subprocess runs with LC_ALL=C and GIT_TERMINAL_PROMPT=0."""
+    captured: dict = {}
+
+    real_run = subprocess.run
+
+    def _fake(args, *rest, **kw):
+        if len(args) >= 2 and args[0] == "git" and args[1] == "ls-remote":
+            captured["env"] = kw.get("env", {})
+            return _FakeCompleted(0, "abc\tHEAD\n", "")
+        return real_run(args, *rest, **kw)
+
+    monkeypatch.setattr(agentic_sync.subprocess, "run", _fake)
+
+    agentic_sync._resolve_github_canonical("https://github.com/org/repo.git")
+    env = captured["env"]
+    assert env.get("LC_ALL") == "C"
+    assert env.get("GIT_TERMINAL_PROMPT") == "0"
+
+
+def test_resolve_canonical_does_not_use_quiet(agentic_sync, monkeypatch):
+    """The git ls-remote command must NOT pass --quiet."""
+    captured: dict = {}
+
+    real_run = subprocess.run
+
+    def _fake(args, *rest, **kw):
+        if len(args) >= 2 and args[0] == "git" and args[1] == "ls-remote":
+            captured["args"] = args
+            return _FakeCompleted(0, "abc\tHEAD\n", "")
+        return real_run(args, *rest, **kw)
+
+    monkeypatch.setattr(agentic_sync.subprocess, "run", _fake)
+
+    agentic_sync._resolve_github_canonical("https://github.com/org/repo.git")
+    assert "--quiet" not in captured["args"]
 
 
 # ---------------------------------------------------------------------------
-# apply_plan integration (synthetic framework, resolver monkeypatched)
+# apply_plan integration (synthetic framework, ls-remote monkeypatched)
 # ---------------------------------------------------------------------------
+
+
+def _patch_ok_lsremote(monkeypatch, agentic_sync, canonical: str = "https://github.com/test/framework.git"):
+    """Stub ls-remote to succeed with no redirect (canonical = queried URL)."""
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0,
+                    stdout="abc123\tHEAD\n",
+                    stderr="")
 
 
 def test_apply_writes_origin_info_after_successful_apply(agentic_sync, tmp_path, monkeypatch):
-    """The three origin keys are written after a successful apply, matching git."""
+    """The three origin keys are written after a successful apply."""
     fw = _make_framework(tmp_path)
     target = _make_target(tmp_path)
     manifest = _load_manifest(fw)
-    _patch_resolver(monkeypatch, agentic_sync,
-                    "https://github.com/test/framework.git")
+    _patch_ok_lsremote(monkeypatch, agentic_sync)
 
     assert agentic_sync.apply_plan(fw, target, manifest, force=False) == 0
 
@@ -286,7 +444,6 @@ def test_apply_writes_origin_info_after_successful_apply(agentic_sync, tmp_path,
     assert lock["framework_branch"] == _git(["symbolic-ref", "--short", "HEAD"], fw)
     assert lock["framework_commit"] == _git(["rev-parse", "HEAD"], fw)
 
-    # Full 40-char lowercase hex SHA.
     commit = lock["framework_commit"]
     assert len(commit) == 40
     assert all(c in "0123456789abcdef" for c in commit)
@@ -297,8 +454,7 @@ def test_old_lockfile_without_origin_is_updated(agentic_sync, tmp_path, monkeypa
     fw = _make_framework(tmp_path)
     target = _make_target(tmp_path)
     manifest = _load_manifest(fw)
-    _patch_resolver(monkeypatch, agentic_sync,
-                    "https://github.com/test/framework.git")
+    _patch_ok_lsremote(monkeypatch, agentic_sync)
 
     documentation = {
         "last_reviewed_commit": "abc123",
@@ -319,13 +475,9 @@ def test_old_lockfile_without_origin_is_updated(agentic_sync, tmp_path, monkeypa
     assert agentic_sync.apply_plan(fw, target, manifest, force=False) == 0
 
     lock = json.loads((target / ".agentic.lock.json").read_text(encoding="utf-8"))
-
-    # Origin keys added from the framework git repo + canonical resolver.
     assert lock["framework_remote_url"] == "https://github.com/test/framework.git"
     assert lock["framework_branch"] == _git(["symbolic-ref", "--short", "HEAD"], fw)
     assert lock["framework_commit"] == _git(["rev-parse", "HEAD"], fw)
-
-    # External documentation key preserved, managed keys refreshed.
     assert lock["documentation"] == documentation
     assert lock["framework_version"] == "0.1.0"
 
@@ -333,19 +485,17 @@ def test_old_lockfile_without_origin_is_updated(agentic_sync, tmp_path, monkeypa
 def test_second_sync_replaces_commit_and_canonical_url(agentic_sync, tmp_path, monkeypatch):
     """A second sync replaces the previous commit and the canonical URL.
 
-    This models a transfer: the locally configured 'origin' URL is UNCHANGED
-    (still the old one), but GitHub now redirects to a new location. The lock
-    must record the new canonical URL and the new commit, replacing the old
-    values. This is the case the previous implementation (raw
-    `git remote get-url origin`) could not handle.
+    Models a transfer: the locally configured 'origin' URL is UNCHANGED
+    (still the old one), but git ls-remote now emits a redirect to the new
+    location. The lock must record the new canonical URL and the new commit.
     """
     fw = _make_framework(tmp_path, origin_url="git@github.com:old-org/framework.git")
     target = _make_target(tmp_path)
     manifest = _load_manifest(fw)
 
     # First apply: old location, no redirect.
-    _patch_resolver(monkeypatch, agentic_sync,
-                    "https://github.com/old-org/framework.git")
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0, stdout="abc\tHEAD\n", stderr="")
     assert agentic_sync.apply_plan(fw, target, manifest, force=False) == 0
     lock1 = json.loads((target / ".agentic.lock.json").read_text(encoding="utf-8"))
     c1 = lock1["framework_commit"]
@@ -360,11 +510,11 @@ def test_second_sync_replaces_commit_and_canonical_url(agentic_sync, tmp_path, m
     c2 = _git(["rev-parse", "HEAD"], fw)
     assert c2 != c1
 
-    # Second apply: GitHub now redirects old-org -> new-org (transfer).
-    # The local origin URL is STILL old-org; only the canonical resolver
-    # observes the new location.
-    _patch_resolver(monkeypatch, agentic_sync,
-                    "https://github.com/new-org/framework.git")
+    # Second apply: git ls-remote now redirects old-org -> new-org (transfer).
+    # The local origin URL is STILL old-org; only git's redirect observes it.
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=0, stdout="abc\tHEAD\n",
+                    stderr="warning: redirecting to https://github.com/new-org/framework.git/\n")
     assert agentic_sync.apply_plan(fw, target, manifest, force=False) == 0
     lock2 = json.loads((target / ".agentic.lock.json").read_text(encoding="utf-8"))
 
@@ -373,7 +523,6 @@ def test_second_sync_replaces_commit_and_canonical_url(agentic_sync, tmp_path, m
     assert lock2["framework_remote_url"] == "https://github.com/new-org/framework.git"
     assert lock2["framework_branch"] == _git(["symbolic-ref", "--short", "HEAD"], fw)
 
-    # The updated managed file was actually installed.
     assert (
         (target / "docs" / "documentation-methodology.md").read_text(encoding="utf-8")
         == "# Methodology v2\n"
@@ -381,12 +530,11 @@ def test_second_sync_replaces_commit_and_canonical_url(agentic_sync, tmp_path, m
 
 
 def test_apply_failure_does_not_register_new_commit(agentic_sync, tmp_path, monkeypatch):
-    """A mid-apply failure must not register the new framework commit or URL."""
+    """A mid-apply failure must not register the new commit or URL."""
     fw = _make_framework(tmp_path)
     target = _make_target(tmp_path)
     manifest = _load_manifest(fw)
-    _patch_resolver(monkeypatch, agentic_sync,
-                    "https://github.com/test/framework.git")
+    _patch_ok_lsremote(monkeypatch, agentic_sync)
 
     old_commit = "0" * 40
     old_url = "https://github.com/old/framework.git"
@@ -404,9 +552,6 @@ def test_apply_failure_does_not_register_new_commit(agentic_sync, tmp_path, monk
     lockfile_path = target / ".agentic.lock.json"
     lockfile_path.write_text(json.dumps(old_lock, indent=2) + "\n", encoding="utf-8")
 
-    # Simulate a failure during file installation: shutil.copy2 raises. The
-    # origin was already resolved successfully, but the lockfile write (the last
-    # step) is never reached, so the stored commit/URL must remain the old ones.
     def boom(*args, **kwargs):
         raise OSError("simulated mid-apply failure")
 
@@ -419,7 +564,6 @@ def test_apply_failure_does_not_register_new_commit(agentic_sync, tmp_path, monk
     assert lock["framework_commit"] == old_commit
     assert lock["framework_remote_url"] == old_url
     assert lock["framework_branch"] == "old-branch"
-    # No partial lockfile left behind.
     assert not (target / ".agentic.lock.json.tmp").exists()
 
 
@@ -467,23 +611,21 @@ def test_resolve_origin_fails_on_non_github_remote(agentic_sync, tmp_path):
     assert "github" in msg or "supported" in msg
 
 
-def test_resolve_origin_fails_when_canonical_resolution_fails(agentic_sync, tmp_path, monkeypatch):
-    """A resolver failure (network/HTTP) propagates as ValueError, no fallback."""
+def test_resolve_origin_fails_when_lsremote_fails(agentic_sync, tmp_path, monkeypatch):
+    """git ls-remote failure propagates as ValueError, no fallback."""
     fw = _make_framework(tmp_path)
-
-    def _boom(owner, repo):
-        raise ValueError("network error")
-
-    monkeypatch.setattr(agentic_sync, "_resolve_github_canonical", _boom)
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=128, stdout="",
+                    stderr="fatal: repository not found\n")
     with pytest.raises(ValueError) as exc:
         agentic_sync.resolve_framework_origin(fw)
-    assert "network" in str(exc.value).lower()
+    assert "git ls-remote failed" in str(exc.value)
 
 
-def test_apply_halts_on_unresolvable_canonical_url_without_touching_target(
+def test_apply_halts_on_lsremote_failure_without_touching_target(
     agentic_sync, tmp_path, monkeypatch
 ):
-    """An unresolvable canonical URL halts apply before any change to the target."""
+    """An ls-remote failure halts apply before any change to the target."""
     fw = _make_framework(tmp_path)
     target = _make_target(tmp_path)
     manifest = _load_manifest(fw)
@@ -502,29 +644,24 @@ def test_apply_halts_on_unresolvable_canonical_url_without_touching_target(
     lockfile_path = target / ".agentic.lock.json"
     lockfile_path.write_text(json.dumps(old_lock, indent=2) + "\n", encoding="utf-8")
 
-    def _boom(owner, repo):
-        raise ValueError("HTTP 404 resolving org/repo")
-
-    monkeypatch.setattr(agentic_sync, "_resolve_github_canonical", _boom)
+    _patch_lsremote(monkeypatch, agentic_sync,
+                    returncode=128, stdout="",
+                    stderr="fatal: repository not found\n")
 
     with pytest.raises(ValueError):
         agentic_sync.apply_plan(fw, target, manifest, force=False)
 
-    # Lockfile unchanged: the new commit/URL was NOT registered.
     lock = json.loads(lockfile_path.read_text(encoding="utf-8"))
     assert lock["framework_commit"] == old_commit
     assert lock["framework_remote_url"] == "https://github.com/old/framework.git"
     assert lock["framework_branch"] == "old-branch"
-
-    # No managed files installed: apply halted before the file loop.
     assert not (target / ".agentic" / "skills" / "sample" / "SKILL.md").exists()
-    # No partial lockfile left behind.
     assert not (target / ".agentic.lock.json.tmp").exists()
 
 
 def test_apply_halts_on_detached_head_without_touching_target(agentic_sync, tmp_path, monkeypatch):
     """Detached HEAD halts apply before any change to the target (origin not
-    even reached: no network call, lockfile untouched)."""
+    even reached: no ls-remote call, lockfile untouched)."""
     fw = _make_framework(tmp_path, detached=True)
     target = _make_target(tmp_path)
     manifest = _load_manifest(fw)
@@ -540,12 +677,16 @@ def test_apply_halts_on_detached_head_without_touching_target(agentic_sync, tmp_
     lockfile_path = target / ".agentic.lock.json"
     lockfile_path.write_text(json.dumps(old_lock, indent=2) + "\n", encoding="utf-8")
 
-    # Resolver must NOT be called (detached HEAD fails first). If it were, this
-    # marker would surface the bug.
-    def _must_not_be_called(owner, repo):
-        raise AssertionError("resolver called despite detached HEAD")
+    called: list[str] = []
+    real_run = subprocess.run
 
-    monkeypatch.setattr(agentic_sync, "_resolve_github_canonical", _must_not_be_called)
+    def _fake(args, *rest, **kw):
+        if len(args) >= 2 and args[0] == "git" and args[1] == "ls-remote":
+            called.append("ls-remote")
+            return _FakeCompleted(0, "abc\tHEAD\n", "")
+        return real_run(args, *rest, **kw)
+
+    monkeypatch.setattr(agentic_sync.subprocess, "run", _fake)
 
     with pytest.raises(ValueError):
         agentic_sync.apply_plan(fw, target, manifest, force=False)
@@ -553,12 +694,12 @@ def test_apply_halts_on_detached_head_without_touching_target(agentic_sync, tmp_
     lock = json.loads(lockfile_path.read_text(encoding="utf-8"))
     assert lock["framework_commit"] == old_commit
     assert not (target / ".agentic" / "skills" / "sample" / "SKILL.md").exists()
+    assert called == []  # ls-remote never reached because HEAD is detached
 
 
 def test_apply_ssh_and_https_remotes_both_resolve(agentic_sync, tmp_path, monkeypatch):
     """Both SSH and HTTPS configured origins resolve to the same canonical URL."""
     canonical = "https://github.com/test/framework.git"
-    _patch_resolver(monkeypatch, agentic_sync, canonical)
 
     origins = (
         "git@github.com:test/framework.git",
@@ -574,6 +715,9 @@ def test_apply_ssh_and_https_remotes_both_resolve(agentic_sync, tmp_path, monkey
         target.mkdir()
         _git_init(target)
         manifest = _load_manifest(fw)
+
+        _patch_lsremote(monkeypatch, agentic_sync,
+                        returncode=0, stdout="abc\tHEAD\n", stderr="")
 
         assert agentic_sync.apply_plan(fw, target, manifest, force=False) == 0
         lock = json.loads((target / ".agentic.lock.json").read_text(encoding="utf-8"))

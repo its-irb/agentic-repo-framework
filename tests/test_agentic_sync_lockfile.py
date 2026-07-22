@@ -67,12 +67,12 @@ def test_apply_preserves_external_lockfile_keys(agentic_sync, target_repo, monke
     # Stub the canonical GitHub resolver so the test is offline and
     # deterministic. apply_plan still exercises git introspection (branch,
     # commit, configured origin) and lockfile handling; only the network step
-    # is replaced.
+    # (git ls-remote) is replaced.
     canonical_url = "https://github.com/test/agentic-repo-framework.git"
     monkeypatch.setattr(
         agentic_sync,
         "_resolve_github_canonical",
-        lambda owner, repo: canonical_url,
+        lambda configured_url: canonical_url,
     )
 
     documentation = {

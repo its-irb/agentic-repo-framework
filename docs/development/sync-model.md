@@ -224,26 +224,40 @@ repositorio en GitHub (la URL antigua sigue configurada aunque GitHub redirija a
 la nueva). Por eso `resolve_framework_origin()` hace:
 
 1. `git remote get-url origin` → URL configurada (SSH o HTTPS).
-2. `_parse_github_remote(url)` → `(owner, repo)`. Soporta los formatos
-   habituales de GitHub:
+2. `_parse_github_remote(url)` valida que es un remoto GitHub soportado:
    - SSH scp-like: `git@github.com:owner/repo.git`
    - SSH explícito: `ssh://git@github.com/owner/repo.git`
    - HTTPS: `https://github.com/owner/repo[.git]`
    - Cualquier otro host (GitLab, self-hosted, etc.) o forma no reconocida se
-     rechaza.
-3. `_resolve_github_canonical(owner, repo)` → URL canónica. Lanza un `HEAD`
-   HTTP anónimo contra `https://github.com/<owner>/<repo>`, sigue las
-   redirecciones del servidor (3xx, incluido el `301` que emite GitHub tras una
-   transferencia) y reconstruye `(owner, repo)` a partir de la URL final. Si
-   GitHub movió el repo, la URL final refleja la **nueva** ubicación.
+     rechaza antes de cualquier llamada remota.
+3. `_ssh_to_https(url)` convierte la URL a HTTPS si era SSH (el repositorio
+   framework es público, así la consulta HTTPS funciona sin credenciales). Las
+   URLs HTTPS se usan tal cual.
+4. `_run_git_lsremote(https_url)` ejecuta `git ls-remote <url> HEAD` con
+   `LC_ALL=C` y `GIT_TERMINAL_PROMPT=0` (sin `--quiet`). Git sigue las
+   redirecciones HTTP de GitHub y, por cada una, emite en stderr una línea:
+   `warning: redirecting to <URL>`.
+5. `_resolve_github_canonical` extrae las URLs de redirección del stderr. Si hay
+   varias, se queda con la **última** (destino final). Si no hay ninguna y
+   `git ls-remote` termina correctamente, la URL canónica es la consultada.
+6. `_normalize_github_https` valida y normaliza la URL final a
+   `https://github.com/<owner>/<repo>.git` (acepta con/sin `.git` y con/sin
+   `/` final).
 
 El valor guardado es la URL git canónica **normalizada**:
 `https://github.com/<owner>/<repo>.git`, independiente del transporte de
 entrada (SSH o HTTPS). Esto la hace estable y comparable entre clones.
 
-No se depende de una API autenticada de GitHub: la redirección se resuelve vía
-el protocolo HTTP normal. No se modifica el remoto `origin` del clon local; el
-objetivo es registrar la URL canónica en el lock.
+La resolución reutiliza el transporte HTTPS, la configuración TLS y las
+credenciales de Git ya disponibles y operativas en la máquina. No se apoya en
+el almacén de certificados del intérprete Python, por lo que funciona en
+instalaciones donde ese bundle no está configurado (p. ej. Python de python.org
+en macOS sin ejecutar `Install Certificates.command`). No requiere instalar
+`certifi`, `truststore` ni ningún paquete adicional: Git ya es una dependencia
+necesaria del framework. No se desactiva la verificación TLS en ningún caso.
+
+No se depende de una API autenticada de GitHub. No se modifica el remoto
+`origin` del clon local; el objetivo es registrar la URL canónica en el lock.
 
 Propiedades:
 
@@ -270,13 +284,13 @@ sync y no se implementan en esta versión; el registro de trazabilidad es lo
 - **Validación del lockfile y resolución del origen antes de tocar el target**:
   `apply_plan()` valida primero el lockfile existente con
   `load_target_lockfile()` (local, barato) y luego llama a
-  `resolve_framework_origin()`. Resover la URL canónica puede requerir red, así
-  que validar el lockfile antes evita consultas de red innecesarias cuando el
-  lock está corrupto. Si el estado git del framework no permite obtener
-  fiablemente la rama o el commit (HEAD detached, sin commits, sin `origin`),
-  o el remoto no es una URL GitHub soportada, o la URL canónica no puede
-  resolverse (sin red, timeout, error HTTP incluido `404` para repos privados,
-  o redirección fuera de `github.com`), se lanza un `ValueError` con un mensaje
+  `resolve_framework_origin()`. Resolver la URL canónica ejecuta
+  `git ls-remote`, así que validar el lockfile antes evita llamadas remotas
+  innecesarias cuando el lock está corrupto. Si el estado git del framework no
+  permite obtener fiablemente la rama o el commit (HEAD detached, sin commits,
+  sin `origin`), o el remoto no es una URL GitHub soportada, o `git ls-remote`
+  falla (red, TLS, repositorio privado/inexistente), o la URL final no es una
+  URL HTTPS válida de `github.com`, se lanza un `ValueError` con un mensaje
   claro y el `apply` aborta sin modificar el target. **No hay fallback** a la
   URL configurada localmente: si la canónica no puede verificarse, no se
   registra. Nunca se escriben datos inventados ni ambiguos, y el lock nunca

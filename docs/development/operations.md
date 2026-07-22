@@ -72,12 +72,15 @@ repositorios git, y el target no puede ser el propio repositorio framework.
   asegurarte de tener la última versión.
 - Tras cada `--apply` correcto, el lockfile del target registra la trazabilidad
   del origen (`framework_remote_url`, `framework_branch`, `framework_commit`).
-  La URL canónica se re-resuelve consultando GitHub (siguiendo redirecciones),
-  no simplemente con `git remote get-url origin`. Si el framework está en un
-  estado git no fiable (HEAD detached, sin `origin`, sin commits), el remoto no
-  es GitHub, o la URL canónica no puede verificarse (sin red, timeout, error
-  HTTP, repo privado), `--apply` aborta antes de tocar el target con un error
-  claro. Ver [sync-model.md](sync-model.md).
+  La URL canónica se re-resuelve ejecutando `git ls-remote` contra el `origin`
+  configurado (convertido a HTTPS si era SSH), no simplemente con
+  `git remote get-url origin`. Si el framework está en un estado git no fiable
+  (HEAD detached, sin `origin`, sin commits), el remoto no es GitHub, o
+  `git ls-remote` falla (sin red, TLS, repo privado/inexistente), `--apply`
+  aborta antes de tocar el target con un error claro. La verificación reutiliza
+  el transporte HTTPS y la configuración TLS de Git; no requiere instalar
+  `certifi`, `truststore` ni certificados de Python. Ver
+  [sync-model.md](sync-model.md).
 
 ## Tests automatizados
 
@@ -88,11 +91,13 @@ la biblioteca estándar y el propio `pytest`). Cubre la gestión del lockfile
 escritura de URL/rama/commit tras un `apply` correcto, actualización de locks
 antiguos, sustitución del commit y la URL canónica en una segunda
 sincronización (incluido el caso de transferencia donde la URL configurada
-localmente no cambia pero GitHub redirige a una nueva ubicación), fallo sin
-registrar el nuevo commit, parseo de remotos SSH/HTTPS, resolución de
-redirecciones, y aborto limpio cuando el git del framework no es fiable o la
-URL canónica no puede resolverse. La suite es 100% offline: el resolver
-canónico de GitHub se stubea mediante monkeypatch.
+localmente no cambia pero `git ls-remote` emite un `warning: redirecting to`
+a una nueva ubicación), fallo sin registrar el nuevo commit, parseo de remotos
+SSH/HTTPS, conversión SSH→HTTPS, normalización de URLs (con/sin `.git` y
+`/` final), extracción de redirecciones (última gana), y aborto limpio cuando
+el git del framework no es fiable o `git ls-remote` falla. La suite es 100%
+offline: `subprocess.run` se stubea mediante monkeypatch para simular las
+salidas de `git ls-remote`.
 
 ```bash
 python3 -m pytest tests/ -v

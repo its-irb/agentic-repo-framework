@@ -100,12 +100,13 @@ completado correctamente**. Se obtienen del repositorio git local del framework:
 - `framework_remote_url`: **URL canónica** del repositorio en GitHub,
   normalizada como `https://github.com/<owner>/<repo>.git`. La URL configurada
   localmente en `origin` (`git remote get-url origin`) es solo el **punto de
-  partida**: se parsea a `(owner, repo)` y luego se resuelve la ubicación
-  canónica siguiendo las redirecciones del servidor (un `HEAD` HTTP a la URL
-  web). Así, si el repositorio se ha transferido y GitHub redirige de la
-  ubicación antigua a la nueva, el lock registra la **nueva**. Se re-resuelve
-  en cada sincronización y sustituye al valor anterior. Solo se soportan
-  remotos GitHub (SSH o HTTPS sobre `github.com`).
+  partida**: se convierte a HTTPS (si era SSH) y se ejecuta `git ls-remote`
+  contra ella. Git sigue las redirecciones HTTP de GitHub y emite
+  `warning: redirecting to <URL>`; esa URL final se registra. Así, si el
+  repositorio se ha transferido y GitHub redirige de la ubicación antigua a la
+  nueva, el lock registra la **nueva**. Se re-resuelve en cada sincronización y
+  sustituye al valor anterior. Solo se soportan remotos GitHub (SSH o HTTPS
+  sobre `github.com`).
 - `framework_branch`: rama actualmente checked out (`git symbolic-ref --short
   HEAD`).
 - `framework_commit`: SHA completo de `HEAD` (`git rev-parse HEAD`).
@@ -126,10 +127,9 @@ aplicado. El CLI termina con código 1. Esto cubre:
 - HEAD detached, repositorio sin commits, o sin remoto `origin`.
 - Remoto `origin` que no es una URL GitHub soportada (SSH/HTTPS sobre
   `github.com`).
-- No se puede resolver la URL canónica: sin red, timeout, error HTTP (incluido
-  `404` para repositorios privados o inexistentes), o redirección fuera de
-  `github.com`. No hay fallback a la URL configurada localmente: si no puede
-  verificarse, no se registra.
+- `git ls-remote` falla (red, TLS, repositorio privado/inexistente), o la URL
+  final redirigida no es una URL HTTPS válida de `github.com`. No hay fallback
+  a la URL configurada localmente: si no puede verificarse, no se registra.
 
 Si el lockfile existe pero no es JSON válido o su raíz no es un objeto, sync
 termina con código 1 **sin sobrescribirlo** (mensaje claro en stderr) para que
