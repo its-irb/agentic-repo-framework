@@ -98,7 +98,8 @@ repositorio:
 - En el **framework**: rastrea el baseline de revisión documental (usado por
   `docs-update`).
 - En **consumidores**: registra el estado instalado del framework (versión,
-  archivos gestionados, hashes SHA-256) además de la revisión documental.
+  archivos gestionados, hashes SHA-256 y trazabilidad del origen: URL del
+  remoto, rama y commit aplicados) además de la revisión documental.
 
 ### Metodología documental como archivo gestionado
 

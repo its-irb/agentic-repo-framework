@@ -177,7 +177,10 @@ Claves gestionadas por `agentic-sync`:
   "managed_core_skills": ["commit-work", "docs-init", "docs-init-full", "docs-update"],
   "managed_files": {
     "<ruta>": { "sha256": "<hash>" }
-  }
+  },
+  "framework_remote_url": "<URL canónica del remoto origin del framework>",
+  "framework_branch": "<rama actualmente checked out en el framework>",
+  "framework_commit": "<SHA completo de HEAD del framework>"
 }
 ```
 
@@ -190,6 +193,7 @@ Los contenidos típicos incluyen:
 - versión del framework instalada;
 - archivos gestionados (con sus hashes SHA-256);
 - core skills instaladas;
+- trazabilidad del origen del framework (URL, rama y commit aplicados);
 - metadatos de revisión de documentación.
 
 El hash guardado por archivo permite distinguir, en una próxima ejecución, un
@@ -198,10 +202,85 @@ genuino (el destino fue modificado de forma no rastreada).
 
 El formato exacto puede evolucionar con futuras versiones del framework.
 
+### Trazabilidad del origen
+
+`framework_remote_url`, `framework_branch` y `framework_commit` describen el
+origen y la revisión exacta del framework aplicado en el **último `--apply`
+completado correctamente**. Se obtienen del repositorio git local del framework
+mediante `resolve_framework_origin()`:
+
+| Clave | Cómo se obtiene |
+|-------|-----------------|
+| `framework_remote_url` | URL canónica de GitHub, resuelta a partir de la URL configurada en `origin` (ver debajo). |
+| `framework_branch` | Rama actualmente checked out: `git symbolic-ref --short HEAD`. |
+| `framework_commit` | SHA completo de `HEAD`: `git rev-parse --verify HEAD`. |
+
+#### Resolución de `framework_remote_url`
+
+La URL configurada localmente en `origin` (`git remote get-url origin`) es solo
+el **punto de partida**, no el valor final: ese comando devuelve la URL
+almacenada en la configuración del clon y **no** refleja una transferencia del
+repositorio en GitHub (la URL antigua sigue configurada aunque GitHub redirija a
+la nueva). Por eso `resolve_framework_origin()` hace:
+
+1. `git remote get-url origin` → URL configurada (SSH o HTTPS).
+2. `_parse_github_remote(url)` → `(owner, repo)`. Soporta los formatos
+   habituales de GitHub:
+   - SSH scp-like: `git@github.com:owner/repo.git`
+   - SSH explícito: `ssh://git@github.com/owner/repo.git`
+   - HTTPS: `https://github.com/owner/repo[.git]`
+   - Cualquier otro host (GitLab, self-hosted, etc.) o forma no reconocida se
+     rechaza.
+3. `_resolve_github_canonical(owner, repo)` → URL canónica. Lanza un `HEAD`
+   HTTP anónimo contra `https://github.com/<owner>/<repo>`, sigue las
+   redirecciones del servidor (3xx, incluido el `301` que emite GitHub tras una
+   transferencia) y reconstruye `(owner, repo)` a partir de la URL final. Si
+   GitHub movió el repo, la URL final refleja la **nueva** ubicación.
+
+El valor guardado es la URL git canónica **normalizada**:
+`https://github.com/<owner>/<repo>.git`, independiente del transporte de
+entrada (SSH o HTTPS). Esto la hace estable y comparable entre clones.
+
+No se depende de una API autenticada de GitHub: la redirección se resuelve vía
+el protocolo HTTP normal. No se modifica el remoto `origin` del clon local; el
+objetivo es registrar la URL canónica en el lock.
+
+Propiedades:
+
+- Se re-resuelve en **cada** sincronización correcta y sustituye a los valores
+  anteriores. Así, tras una transferencia, el siguiente `--apply` correcto
+  sustituye la URL antigua del lock por la ubicación nueva (aunque la URL
+  configurada localmente siga siendo la antigua), y avanza al commit más
+  reciente.
+- Se escriben **solo** tras completar el `apply`; un fallo no registra el nuevo
+  commit ni la nueva URL.
+- Son compatibles con lockfiles antiguos que no contengan estos campos: un
+  lock sin ellos se completa sin perder las claves externas existentes.
+
+Esta información habilita futuras comprobaciones de actualización (p. ej.
+comparar el commit registrado con el commit actual del remoto para avisar de
+que el destino va desactualizado). Dichas comprobaciones **no** forman parte del
+sync y no se implementan en esta versión; el registro de trazabilidad es lo
+único que se añade ahora.
+
 ### Propiedades de escritura del lockfile
 
 `apply_plan()` escribe `.agentic.lock.json` de forma segura:
 
+- **Validación del lockfile y resolución del origen antes de tocar el target**:
+  `apply_plan()` valida primero el lockfile existente con
+  `load_target_lockfile()` (local, barato) y luego llama a
+  `resolve_framework_origin()`. Resover la URL canónica puede requerir red, así
+  que validar el lockfile antes evita consultas de red innecesarias cuando el
+  lock está corrupto. Si el estado git del framework no permite obtener
+  fiablemente la rama o el commit (HEAD detached, sin commits, sin `origin`),
+  o el remoto no es una URL GitHub soportada, o la URL canónica no puede
+  resolverse (sin red, timeout, error HTTP incluido `404` para repos privados,
+  o redirección fuera de `github.com`), se lanza un `ValueError` con un mensaje
+  claro y el `apply` aborta sin modificar el target. **No hay fallback** a la
+  URL configurada localmente: si la canónica no puede verificarse, no se
+  registra. Nunca se escriben datos inventados ni ambiguos, y el lock nunca
+  queda marcado con un commit no aplicado. El CLI termina con código 1.
 - **Conservación de claves externas**: parte del lockfile existente y actualiza
   solo las claves gestionadas. Nunca reconstruye el fichero desde cero.
 - **Escritura atómica**: serializa el JSON completo, lo escribe en un fichero

@@ -4,9 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import hashlib
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -83,6 +88,228 @@ def find_framework_root() -> Path:
 def is_git_repo(path: Path) -> bool:
     """Check whether a directory is a git repository by testing for .git."""
     return (path / ".git").exists()
+
+
+def _run_git(cwd: Path, args: list[str]) -> tuple[int, str]:
+    """Run a read-only git command in ``cwd`` and return (returncode, stdout).
+
+    stdout is stripped of surrounding whitespace. stderr is captured and
+    discarded: callers rely on the return code to detect failure and craft
+    their own error messages. Used only for git introspection of the framework
+    repository.
+    """
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stdout.strip()
+
+
+def _parse_github_remote(url: str) -> tuple[str, str] | None:
+    """Parse a GitHub remote URL into an ``(owner, repo)`` pair.
+
+    Supports the common GitHub remote formats:
+
+    - SSH scp-like:     ``git@github.com:owner/repo.git``
+    - SSH explicit:     ``ssh://git@github.com/owner/repo.git``
+    - HTTPS:            ``https://github.com/owner/repo.git``
+                        ``https://github.com/owner/repo``
+
+    Returns None for any other host (GitLab, self-hosted, etc.) or a URL that
+    does not match one of these forms. The returned ``repo`` never carries the
+    trailing ``.git`` suffix. The owner/repo segments are URL-decoded so values
+    containing percent-escapes are handled, and segments are kept verbatim
+    (case preserved).
+
+    This is the only piece of GitHub knowledge in the script; it is the
+    starting point for resolving the canonical URL of the framework repository.
+    """
+    candidates: list[tuple[str, str, str]] = []
+
+    # SSH scp-like: git@github.com:owner/repo.git  (also git@github.com:owner/repo)
+    # The user/host part is optional; the separator is ':'.
+    m = re.match(r"^(?:[^@\s]+@)?github\.com:([^/]+)/([^/]+?)(?:\.git)?$", url)
+    if m:
+        candidates.append((urllib.parse.unquote(m.group(1)),
+                           urllib.parse.unquote(m.group(2)),
+                           "scp"))
+
+    # SSH explicit: ssh://[user@]github.com/owner/repo.git
+    # HTTPS:        https://[user:pass@]github.com/owner/repo.git
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError:
+        parsed = None
+    if parsed is not None and parsed.scheme in ("ssh", "https") \
+            and parsed.hostname == "github.com":
+        parts = [p for p in parsed.path.split("/") if p != ""]
+        if len(parts) == 2:
+            owner = urllib.parse.unquote(parts[0])
+            repo = urllib.parse.unquote(parts[1])
+            if repo.endswith(".git"):
+                repo = repo[: -len(".git")]
+            candidates.append((owner, repo, parsed.scheme))
+
+    for owner, repo, _kind in candidates:
+        if owner != "" and repo != "":
+            return owner, repo
+    return None
+
+
+def _resolve_github_canonical(owner: str, repo: str) -> str:
+    """Resolve the canonical GitHub location of a repository.
+
+    Issues an anonymous HTTP ``HEAD`` against the repository's web URL
+    (``https://github.com/<owner>/<repo>``) and follows server-side redirects
+    (3xx, including the 301 GitHub emits after a repo transfer). The final URL
+    is parsed back into ``(owner, repo)``: when GitHub has moved the repo, the
+    final URL reflects the new location, and that is the canonical value.
+
+    Returns the canonical git URL in normalized form:
+    ``https://github.com/<owner>/<repo>.git``.
+
+    Raises ValueError with a clear message if the canonical location cannot be
+    determined reliably: network/timeout errors (URLError), non-redirect HTTP
+    failures (HTTPError, non-2xx), an unexpected final URL, or an unreachable
+    final path. No value is fabricated: callers must abort the sync on failure.
+
+    Anonymous access only works for public repositories; a private repo yields
+    404 and is treated as an unreliable origin (the framework repo is public).
+    """
+    web_url = f"https://github.com/{owner}/{repo}"
+    req = urllib.request.Request(web_url, method="HEAD")
+    req.add_header("User-Agent", "agentic-sync/0.1 (+traceability)")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            final_url = resp.geturl()
+            status = getattr(resp, "status", 200)
+    except urllib.error.HTTPError as exc:
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: HTTP {exc.code} ({web_url}). "
+            f"The repository may be private, deleted, or the network may be "
+            f"blocking access. agentic-sync will not write an unverified URL."
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: network error ({exc.reason}). "
+            f"agentic-sync requires network access to verify the remote "
+            f"origin. Ensure connectivity and retry."
+        ) from exc
+    except TimeoutError as exc:
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: request timed out. "
+            f"Ensure network connectivity and retry."
+        ) from exc
+
+    if status is not None and not (200 <= status < 400):
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: unexpected HTTP status {status} ({web_url})."
+        )
+
+    parsed = urllib.parse.urlparse(final_url)
+    if parsed.hostname != "github.com":
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: redirect left github.com "
+            f"(final host: {parsed.hostname!r})."
+        )
+
+    parts = [p for p in parsed.path.split("/") if p != ""]
+    if len(parts) < 2:
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: unexpected final URL {final_url!r}."
+        )
+
+    canon_owner = urllib.parse.unquote(parts[0])
+    canon_repo = urllib.parse.unquote(parts[1])
+    if canon_repo.endswith(".git"):
+        canon_repo = canon_repo[: -len(".git")]
+    if canon_owner == "" or canon_repo == "":
+        raise ValueError(
+            f"Cannot resolve the canonical GitHub URL for "
+            f"{owner}/{repo}: empty owner or repo in {final_url!r}."
+        )
+
+    return f"https://github.com/{canon_owner}/{canon_repo}.git"
+
+
+def resolve_framework_origin(framework_root: Path) -> dict[str, str]:
+    """Resolve the canonical origin of the framework repo for traceability.
+
+    Returns a dict with three keys describing the exact source and revision of
+    the framework that ``apply_plan`` will record in the target's lockfile on a
+    successful ``--apply``:
+
+    - ``framework_remote_url``: canonical GitHub git URL of the framework
+      repository, resolved from the locally configured ``origin`` remote. The
+      configured URL is only the **starting point**: it is parsed into
+      ``(owner, repo)`` and the canonical location is obtained by following
+      GitHub's redirects on the web URL. Thus a transferred repository (old URL
+      still configured locally but GitHub redirects to the new location) yields
+      the new canonical URL. The value is normalized to
+      ``https://github.com/<owner>/<repo>.git`` regardless of the input
+      transport (SSH or HTTPS). Re-resolved on every sync, so the stored value
+      is always replaced with the current canonical location.
+    - ``framework_branch``: branch currently checked out in the framework
+      repository. A detached HEAD is rejected.
+    - ``framework_commit``: full SHA of HEAD in the framework repository.
+
+    Raises ValueError with a clear message if any of the three cannot be
+    determined reliably. This covers: missing ``origin`` remote, detached HEAD,
+    empty repository with no commits, non-GitHub remote URL, network/timeout
+    errors, HTTP failures (including private/inaccessible repos returning 404),
+    or an unexpected redirect target. ``apply_plan`` calls this before touching
+    the target, so an unreliable origin halts the sync without leaving partial
+    state and without writing fabricated or ambiguous data to the lockfile.
+    """
+    rc, branch = _run_git(framework_root, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+    if rc != 0 or not branch:
+        raise ValueError(
+            f"Cannot determine the framework branch reliably: HEAD is detached "
+            f"or unreadable in {framework_root}. "
+            f"Checkout a branch in the framework repository before syncing."
+        )
+
+    rc, commit = _run_git(framework_root, ["rev-parse", "--verify", "HEAD"])
+    if rc != 0 or not commit:
+        raise ValueError(
+            f"Cannot determine the framework commit reliably: HEAD has no "
+            f"commits in {framework_root}. "
+            f"Commit something in the framework repository before syncing."
+        )
+
+    rc, configured_url = _run_git(framework_root, ["remote", "get-url", "origin"])
+    if rc != 0 or not configured_url:
+        raise ValueError(
+            f"Cannot determine the framework remote URL reliably: "
+            f"no 'origin' remote configured in {framework_root}. "
+            f"Configure an 'origin' remote before syncing."
+        )
+
+    parsed = _parse_github_remote(configured_url)
+    if parsed is None:
+        raise ValueError(
+            f"Cannot determine the framework canonical remote URL reliably: "
+            f"the configured 'origin' URL {configured_url!r} is not a "
+            f"supported GitHub remote (SSH or HTTPS on github.com). "
+            f"agentic-sync only resolves GitHub origins."
+        )
+
+    owner, repo = parsed
+    canonical_url = _resolve_github_canonical(owner, repo)
+
+    return {
+        "framework_remote_url": canonical_url,
+        "framework_branch": branch,
+        "framework_commit": commit,
+    }
 
 
 def load_manifest(framework_root: Path) -> dict:
@@ -330,12 +557,28 @@ def apply_plan(framework_root: Path, target: Path, manifest: dict, force: bool) 
     Builds a new .agentic.lock.json in the target with updated hashes and
     writes it to disk. Returns exit code 0 on success.
 
+    Before touching the target, validates the existing lockfile
+    (``load_target_lockfile``) and then resolves the framework origin (canonical
+    remote URL, branch, commit) via ``resolve_framework_origin``. Resolving the
+    origin may require network access to verify the canonical GitHub URL, so the
+    lockfile is validated first to fail fast on a corrupt lockfile without
+    hitting the network. If the framework git state or the canonical URL cannot
+    be determined reliably, apply halts with a ValueError and the target's
+    lockfile is left untouched. On success the lockfile records the resolved
+    origin as the traceability of the last successful apply.
+
     This is the write mode invoked by --apply.
     """
     version = manifest["framework_version"]
     core_skills = discover_core_skills(framework_root)
     managed_files = build_managed_files(framework_root, manifest)
+    # Validate the existing lockfile first (cheap, local) so a corrupt lockfile
+    # halts before any network call. Then resolve the framework origin, which
+    # may issue an HTTP request to verify the canonical GitHub URL. If either
+    # step fails, apply halts without copying any file and without rewriting
+    # the lockfile, so the lock never claims a commit that was not applied.
     target_lockfile = load_target_lockfile(target)
+    origin = resolve_framework_origin(framework_root)
     new_managed_files: dict[str, dict[str, str]] = {}
 
     installed = 0
@@ -397,6 +640,13 @@ def apply_plan(framework_root: Path, target: Path, manifest: dict, force: bool) 
     lockfile["source"] = str(framework_root)
     lockfile["managed_core_skills"] = core_skills
     lockfile["managed_files"] = new_managed_files
+    # Traceability of the last successful apply: exact origin and revision of
+    # the framework used. Re-read from the framework git repo on every sync, so
+    # these values replace any previously stored ones (e.g. after a transfer to
+    # a new remote URL, or after advancing to a newer commit).
+    lockfile["framework_remote_url"] = origin["framework_remote_url"]
+    lockfile["framework_branch"] = origin["framework_branch"]
+    lockfile["framework_commit"] = origin["framework_commit"]
 
     # Atomic write: serialize the full JSON first, then write to a temp file in
     # the same directory and replace the original only after success.

@@ -2,8 +2,10 @@
 
 These tests verify that ``agentic-sync`` only manages the lockfile keys it owns
 (``framework_version``, ``installed_at``, ``source``, ``managed_core_skills``,
-``managed_files``) and preserves any other top-level keys written by external
-components such as ``docs-init`` / ``docs-update`` (e.g. ``documentation``).
+``managed_files``, ``framework_remote_url``, ``framework_branch``,
+``framework_commit``) and preserves any other top-level keys written by
+external components such as ``docs-init`` / ``docs-update`` (e.g.
+``documentation``).
 
 They also verify that an existing lockfile that is not valid JSON (or whose
 root is not a JSON object) is never overwritten and causes the sync to halt
@@ -52,7 +54,7 @@ def target_repo(tmp_path):
     return target
 
 
-def test_apply_preserves_external_lockfile_keys(agentic_sync, target_repo):
+def test_apply_preserves_external_lockfile_keys(agentic_sync, target_repo, monkeypatch):
     """Regression: ``documentation`` and unknown keys must survive ``--apply``.
 
     Previously ``apply_plan`` rebuilt the lockfile from scratch and dropped
@@ -61,6 +63,17 @@ def test_apply_preserves_external_lockfile_keys(agentic_sync, target_repo):
     """
     framework_root = agentic_sync.find_framework_root()
     manifest = agentic_sync.load_manifest(framework_root)
+
+    # Stub the canonical GitHub resolver so the test is offline and
+    # deterministic. apply_plan still exercises git introspection (branch,
+    # commit, configured origin) and lockfile handling; only the network step
+    # is replaced.
+    canonical_url = "https://github.com/test/agentic-repo-framework.git"
+    monkeypatch.setattr(
+        agentic_sync,
+        "_resolve_github_canonical",
+        lambda owner, repo: canonical_url,
+    )
 
     documentation = {
         "last_reviewed_commit": "abc123deadbeef0000000000000000000000000",
@@ -100,8 +113,23 @@ def test_apply_preserves_external_lockfile_keys(agentic_sync, target_repo):
         "source",
         "managed_core_skills",
         "managed_files",
+        "framework_remote_url",
+        "framework_branch",
+        "framework_commit",
     }
     assert set(result.keys()) == expected_top_level
+
+    # Traceability keys: URL comes from the (stubbed) canonical resolver;
+    # branch and commit come from the framework git repo.
+    assert result["framework_remote_url"] == canonical_url
+    assert result["framework_branch"] == subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=framework_root, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert result["framework_commit"] == subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=framework_root, capture_output=True, text=True, check=True,
+    ).stdout.strip()
 
 
 @pytest.mark.parametrize(

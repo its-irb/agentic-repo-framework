@@ -70,11 +70,39 @@ repositorios git, y el target no puede ser el propio repositorio framework.
   `--force`.
 - Si aparecen `MISSING`, haz `git pull` en el repositorio framework para
   asegurarte de tener la última versión.
+- Tras cada `--apply` correcto, el lockfile del target registra la trazabilidad
+  del origen (`framework_remote_url`, `framework_branch`, `framework_commit`).
+  La URL canónica se re-resuelve consultando GitHub (siguiendo redirecciones),
+  no simplemente con `git remote get-url origin`. Si el framework está en un
+  estado git no fiable (HEAD detached, sin `origin`, sin commits), el remoto no
+  es GitHub, o la URL canónica no puede verificarse (sin red, timeout, error
+  HTTP, repo privado), `--apply` aborta antes de tocar el target con un error
+  claro. Ver [sync-model.md](sync-model.md).
 
-No hay suite de tests automatizada del script. Los fixtures de test
+## Tests automatizados
+
+La suite de tests está en `tests/` y usa `pytest` (sin dependencias más allá de
+la biblioteca estándar y el propio `pytest`). Cubre la gestión del lockfile
+(`test_agentic_sync_lockfile.py`) y la trazabilidad del origen
+(`test_agentic_sync_origin.py`): claves externas preservadas, lockfile inválido,
+escritura de URL/rama/commit tras un `apply` correcto, actualización de locks
+antiguos, sustitución del commit y la URL canónica en una segunda
+sincronización (incluido el caso de transferencia donde la URL configurada
+localmente no cambia pero GitHub redirige a una nueva ubicación), fallo sin
+registrar el nuevo commit, parseo de remotos SSH/HTTPS, resolución de
+redirecciones, y aborto limpio cuando el git del framework no es fiable o la
+URL canónica no puede resolverse. La suite es 100% offline: el resolver
+canónico de GitHub se stubea mediante monkeypatch.
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+Los tests construyen un framework sintético bajo un directorio temporal, así
+que no mutan el repositorio framework real. Los fixtures manuales
 (`.agentic/test-skills/`, `.agentic/test-docs/` y sus espejos en `.claude/` y
-`.opencode/`) sirven para verificar manualmente la resolución de wrappers en los
-arneses.
+`.opencode/`) siguen sirviendo para verificar a mano la resolución de wrappers
+en los arneses.
 
 ## Actualizar documentación
 

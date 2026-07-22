@@ -81,7 +81,24 @@ Tras `--apply`, el target recibe `.agentic.lock.json` con:
 - la fecha de instalación;
 - la ruta del framework origen;
 - las Core Skills instaladas;
-- los archivos gestionados con sus hashes SHA-256.
+- los archivos gestionados con sus hashes SHA-256;
+- la **trazabilidad del origen**: URL canónica del repositorio framework en
+  GitHub, rama y commit del framework aplicados.
+
+La trazabilidad representa el origen y la revisión exacta del framework usado
+en el último `--apply` completado correctamente. La URL canónica se
+**re-resuelve** en cada sincronización: la URL configurada localmente en
+`origin` es solo el punto de partida; el script consulta la ubicación actual
+en GitHub siguiendo sus redirecciones. Así, si el repositorio framework se ha
+transferido (p. ej. de una cuenta a una organización) y GitHub redirige a la
+nueva ubicación, el siguiente `--apply` correcto sustituye la URL antigua del
+lock por la nueva, aunque la URL configurada localmente siga siendo la
+antigua. La URL se guarda normalizada como
+`https://github.com/<owner>/<repo>.git`.
+
+Esto permitirá en el futuro comprobar si el repositorio destino va
+desactualizado respecto al framework; esas comprobaciones no forman parte del
+sync hoy.
 
 El hash de cada archivo permite que, en la siguiente sincronización, el script
 distinga un `UPDATE` seguro (el archivo local coincide con el hash registrado)
@@ -97,6 +114,14 @@ No borres ni edites manualmente el lockfile si quieres conservar la detección
 correcta de conflictos. Si el fichero existe pero está corrupto (JSON inválido
 o no es un objeto), `agentic-sync` no lo sobrescribe: muestra un error claro y
 termina para que lo corrijas a mano.
+
+Si el repositorio framework está en un estado git no fiable (HEAD detached, sin
+remoto `origin`, o sin commits), o el remoto `origin` no es una URL GitHub
+soportada, o no se puede verificar la URL canónica (sin red, timeout, error
+HTTP, o repo privado/inaccesible), `--apply` aborta antes de cambiar nada y
+avisa claramente; no se inventa la trazabilidad ni se marca un commit no
+aplicado. Verificar la URL canónica requiere red, así que `--apply` necesita
+conectividad a GitHub.
 
 ## Qué se gestiona y qué no
 
