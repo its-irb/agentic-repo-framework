@@ -16,6 +16,11 @@ Exit codes are stable and documented; stdout carries a single JSON object so
 harness integrations can interpret the result deterministically. Use
 ``--human`` for a readable summary when debugging manually.
 
+When the lock contains a non-empty ``source`` string (the local framework
+clone path used by the last apply), it is surfaced as ``framework_source``
+in the JSON output as an informational hint. It is not a canonical or
+trusted origin.
+
 States / exit codes:
 
   0  UP_TO_DATE            — installed commit == remote HEAD of the branch
