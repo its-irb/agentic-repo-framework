@@ -173,11 +173,9 @@ El target por defecto es `.`.
 ## Aviso de actualización del framework
 
 Cuando usas OpenCode en un repositorio sincronizado, el framework comprueba al
-**cargar el plugin** si el repositorio va desactualizado respecto al último
-commit de la rama registrada. **Solo avisa; nunca sincroniza ni pide
-autorización para hacerlo.** La comprobación se ejecuta una sola vez por carga
-de OpenCode; las nuevas sesiones y los subagentes no generan comprobaciones
-adicionales.
+**iniciar** y al **crear una nueva sesión** (incluido `/new`) si el repositorio
+va desactualizado respecto al último commit de la rama registrada. **Solo
+avisa; nunca sincroniza ni pide autorización para hacerlo.**
 
 Usa los datos que el último `agentic-sync.py --apply` registró en
 `.agentic.lock.json` y consulta el remoto con `git ls-remote`.

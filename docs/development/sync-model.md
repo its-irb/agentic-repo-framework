@@ -232,52 +232,24 @@ La lógica está separada en dos capas para no duplicarla entre arneses:
 
 ### Cuándo se ejecuta
 
-- **Al cargar el plugin**: la comprobación se lanza una sola vez durante la
-  inicialización del plugin, antes de que el usuario envíe el primer mensaje y
-  sin esperar a que exista una sesión. Es la vía principal.
-- **`session.created` como fallback temporal**: el hook `session.created` se
-  conserva temporalmente como mecanismo de respaldo de una sola ejecución. No
-  comprueba en cada sesión; solo actúa si la comprobación de inicialización no
-  pudo mostrar un toast.
+- Al abrir OpenCode (que crea la sesión inicial).
+- Al crear una nueva sesión, incluido `/new`.
 
-> **Validación pendiente.** Este comportamiento debe validarse manualmente
-> antes de retirar el fallback de `session.created`. Hasta entonces,
-> `session.created` sigue presente como respaldo.
-
-La comprobación remota se ejecuta **como máximo una vez por carga del plugin**
-en el funcionamiento normal. Las nuevas sesiones (`/new`) y los subagentes no
-generan comprobaciones adicionales.
-
-### Máquina de estados (por instancia del plugin)
-
-El plugin mantiene un estado interno explícito, sin caché persistente:
-
-| Estado | Descripción |
-|--------|-------------|
-| `IDLE` | comprobación de inicio no lanzada |
-| `RUNNING` | comprobación en curso |
-| `DONE` | resultado obtenido y toast mostrado (o silencioso) |
-| `TOAST_PENDING` | resultado obtenido, toast pendiente de mostrar |
-| `NO_RESULT` | la herramienta se ejecutó pero no produjo resultado interpretable |
-| `FALLBACK_RUNNING` | fallback en curso (evita ejecuciones concurrentes) |
-| `FALLBACK_CONSUMED` | terminal: el fallback ya se usó |
+El disparador es **únicamente** el evento `session.created`. El plugin no
+comprueba durante su inicialización, por lo que una misma apertura no produce
+dos avisos (init + `session.created`).
 
 ### Ejecución no bloqueante y sin duplicados
 
-- **Fire-and-forget en la inicialización**: el cuerpo del plugin lanza la
-  comprobación de forma detached y devuelve los Hooks inmediatamente. OpenCode
-  no se bloquea. La herramienta acota `git ls-remote` a 10 s.
-- **Anti-carrera**: si `session.created` llega mientras la comprobación
-  inicial está en curso, el fallback espera a que termine y luego reevalúa el
-  estado; nunca lanza una segunda comprobación concurrente.
-- **Fallback de una sola vez**: si el toast de inicialización no pudo
-  mostrarse, `session.created` reintenta mostrar el mismo toast (sin volver a
-  ejecutar `git ls-remote`). Si la comprobación inicial no produjo resultado,
-  el fallback realiza un único nuevo intento de la herramienta. Tras ese
-  intento, el estado pasa a `FALLBACK_CONSUMED` y no se vuelve a comprobar.
-- **Subagentes ignorados**: las sesiones con `parentID` (subagentes) no
-  activan el fallback. Solo las sesiones principales creadas por el usuario
-  pueden activarlo.
+- **Fire-and-forget**: el manejador de `session.created` no espera a la
+  comprobación; devuelve una promesa resuelta de inmediato. Aunque OpenCode
+  espere la finalización del manejador, la sesión no se retrasa. La herramienta
+  acota `git ls-remote` a 10 s, de modo que un fallo de red no puede demorar la
+  sesión 30 s.
+- **Dedup por sesión**: una guarda por instancia omite un segundo
+  `session.created` para el mismo `session.id`. Las sesiones distintas (abrir y
+  luego `/new`) siempre se comprueban. No es una caché entre sesiones: cada
+  sesión nueva se comprueba.
 
 ### Repositorio fuente y locks antiguos
 
