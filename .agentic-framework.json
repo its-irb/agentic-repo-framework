@@ -1,5 +1,5 @@
 {
-  "framework_version": "0.1.0",
+  "framework_version": "0.1.1",
   "managed_files": [
     "docs/documentation-methodology.md",
     ".agentic/tools/check-framework-updates.py",
