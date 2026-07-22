@@ -375,6 +375,26 @@ Después de que el usuario confirme los cambios, y únicamente cuando se hayan a
 - `documentation.last_reviewed_at` = fecha y hora actual real en formato ISO 8601;
 - si no puedes obtener la fecha y hora real, usa `null` y avisa.
 
+## Contexto del repositorio
+
+Antes de aplicar la lógica de baseline, comprueba si existe `.agentic-framework.json` en la raíz.
+
+### Repositorio fuente del framework
+
+Si existe:
+
+- Usa como nueva baseline documental el `HEAD` existente antes de crear el próximo commit.
+- Después del commit es esperado que la baseline apunte al padre del nuevo `HEAD`.
+- No intentes predecir ni insertar el SHA del commit que todavía no existe.
+- No propongas `commit` seguido de `amend`.
+- No solicites escoger entre alternativas para resolver esta diferencia esperada.
+- Ignora `framework_remote_url`, `framework_branch` y `framework_commit` durante la revisión documental.
+- No modifiques esos campos; pertenecen exclusivamente a `agentic-sync.py --apply`.
+
+### Repositorio destino
+
+Si no existe `.agentic-framework.json`, aplica la lógica normal de baseline y trazabilidad.
+
 ## Reglas
 
 - No inventes información.
