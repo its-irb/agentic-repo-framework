@@ -160,13 +160,18 @@ OpenCode avisa al usuario cuando el repositorio destino no está sincronizado co
 el último commit de la rama del framework registrada en `.agentic.lock.json`.
 **Solo avisa; nunca sincroniza ni modifica el repositorio.**
 
-- Se ejecuta al abrir OpenCode y al crear una nueva sesión (incluido `/new`).
+- Se ejecuta una sola vez al cargar el plugin, antes de que el usuario envíe
+  el primer mensaje. `session.created` se conserva temporalmente como fallback
+  de una sola ejecución; no comprueba en cada sesión ni en subagentes.
 - Usa los datos registrados por el último `agentic-sync.py --apply`
   (`framework_remote_url`, `framework_branch`, `framework_commit`).
 - El repositorio fuente del framework se excluye automáticamente (detectado por
   `.agentic-framework.json`): no avisa.
 - Consulta el remoto con `git ls-remote` (única dependencia: Git). No usa
   `urllib`/`requests`/`curl`/`certifi`.
+
+> **Validación pendiente.** Este comportamiento debe validarse manualmente
+> antes de retirar el fallback de `session.created`.
 
 La lógica vive en la herramienta común
 `.agentic/tools/check-framework-updates.py` (agnóstica del arnés). El plugin
