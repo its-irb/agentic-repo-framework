@@ -37,8 +37,11 @@ En la versión inicial, `agentic-sync` solo gestiona:
 - `.claude/skills/` (wrappers de Core Skills)
 - `.opencode/skills/` (wrappers de Core Skills)
 - `docs/documentation-methodology.md`
+- `.agentic/tools/check-framework-updates.py` (herramienta de comprobación)
+- `.opencode/plugins/agentic-update-check.js` (integración OpenCode)
 
-No gestiona ningún otro archivo del repositorio.
+No gestiona ningún otro archivo del repositorio. `.agentic-framework.json` no se
+distribuye a los consumidores.
 
 ## Reglas
 
@@ -122,7 +125,9 @@ Declara:
 
 - `framework_version`: versión del framework (actualmente `0.1.0`).
 - `managed_files`: archivos gestionados explícitos (actualmente
-  `docs/documentation-methodology.md`).
+  `docs/documentation-methodology.md`,
+  `.agentic/tools/check-framework-updates.py` y
+  `.opencode/plugins/agentic-update-check.js`).
 - `managed_skill_roots`: raíces a escanear en busca de `*/SKILL.md` (actualmente
   `.agentic/skills`, `.claude/skills`, `.opencode/skills`).
 
@@ -201,6 +206,137 @@ El hash guardado por archivo permite distinguir, en una próxima ejecución, un
 genuino (el destino fue modificado de forma no rastreada).
 
 El formato exacto puede evolucionar con futuras versiones del framework.
+
+## Comprobación de actualizaciones (solo avisa, no sincroniza)
+
+El framework incluye una comprobación automática que avisa al usuario cuando el
+repositorio destino no está alineado con el último commit de la rama registrada
+en `.agentic.lock.json`. **Solo avisa; nunca sincroniza ni modifica el
+repositorio.**
+
+### Arquitectura: herramienta común + integración fina
+
+La lógica está separada en dos capas para no duplicarla entre arneses:
+
+1. **Herramienta común** `.agentic/tools/check-framework-updates.py`:
+   determinista y agnóstica del arnés. Localiza la raíz del repositorio,
+   detecta el repositorio fuente (si existe `.agentic-framework.json`, omite),
+   lee la trazabilidad del lock, consulta el remoto con `git ls-remote` y
+   compara el SHA completo. No usa `urllib`/`requests`/`curl`/`certifi`; solo
+   Git. No modifica ningún fichero. Emite JSON estable a stdout y un código de
+   retorno documentado.
+2. **Integración OpenCode** `.opencode/plugins/agentic-update-check.js`:
+   contiene únicamente el pegamento: invoca la herramienta, interpreta el
+   resultado y muestra un aviso. No reimplementa la lectura del lock, la
+   ejecución de Git ni la comparación de commits.
+
+### Cuándo se ejecuta
+
+- Al abrir OpenCode (que crea la sesión inicial).
+- Al crear una nueva sesión, incluido `/new`.
+
+El disparador es **únicamente** el evento `session.created`. El plugin no
+comprueba durante su inicialización, por lo que una misma apertura no produce
+dos avisos (init + `session.created`).
+
+### Ejecución no bloqueante y sin duplicados
+
+- **Fire-and-forget**: el manejador de `session.created` no espera a la
+  comprobación; devuelve una promesa resuelta de inmediato. Aunque OpenCode
+  espere la finalización del manejador, la sesión no se retrasa. La herramienta
+  acota `git ls-remote` a 10 s, de modo que un fallo de red no puede demorar la
+  sesión 30 s.
+- **Dedup por sesión**: una guarda por instancia omite un segundo
+  `session.created` para el mismo `session.id`. Las sesiones distintas (abrir y
+  luego `/new`) siempre se comprueban. No es una caché entre sesiones: cada
+  sesión nueva se comprueba.
+
+### Repositorio fuente y locks antiguos
+
+- El repositorio que contiene `.agentic-framework.json` es el propio framework:
+  la comprobación se omite (no avisa).
+- La herramienta distingue tres estados del lockfile:
+  - `LOCK_MISSING`: `.agentic.lock.json` no existe. La instalación está
+    incompleta.
+  - `LOCK_INCOMPLETE`: el fichero existe pero le falta algún campo de
+    trazabilidad (incluye un lock `{}` vacío). Hay que sincronizar una vez para
+    registrar la procedencia.
+  - `LOCK_INVALID`: el JSON es inválido, la raíz no es un objeto, o un campo de
+    trazabilidad (`framework_remote_url`, `framework_branch`,
+    `framework_commit`) tiene un tipo incorrecto (no es cadena, es vacío) o no
+    es un SHA completo de 40 hex. La validación de tipos ocurre antes de
+    aplicar el regex o hacer cualquier llamada remota, así un campo mal tipado
+    nunca produce un traceback.
+
+### Errores de ejecución de Git
+
+`run_lsremote()` controla tres clases de fallos al arrancar o ejecutar
+`git ls-remote`, y los convierte todos en el estado determinista
+`GIT_OR_NETWORK_ERROR` (código 7) con un `reason` claro, sin traceback:
+
+- `FileNotFoundError`: `git` no está instalado o no está en `PATH`.
+- `OSError` (genérico): problemas de permisos u otros errores del sistema al
+  ejecutar el proceso.
+- `subprocess.TimeoutExpired`: la consulta excede el timeout (10 s).
+
+`REMOTE_BRANCH_MISSING` (código 6) es distinto: corresponde a una ejecución
+**correcta** de `git ls-remote` que devuelve la rama solicitada ausente, no a un
+fallo de ejecución.
+
+### Flujo manual de actualización
+
+Cuando hay una actualización disponible o el lock está incompleto/falta, el
+aviso indica el flujo manual actual:
+
+1. Ir al clon local del Agentic Framework y actualizarlo con
+   `git pull --ff-only`.
+2. Desde ese clon actualizado, ejecutar
+   `bin/agentic-sync.py --apply <repositorio-destino>`.
+
+En el futuro este flujo podrá cambiar cuando la sincronización se haga
+directamente desde GitHub; por ahora la descarga remota del sincronizador está
+fuera de alcance.
+
+### Campo `source` como ayuda informativa
+
+`agentic-sync.py` escribe en el lock del target el campo `source` con la ruta
+del clon local del framework usado en el último `apply`. La herramienta de
+comprobación lo expone en su salida JSON como `framework_source` (cuando es una
+cadena no vacía) para que el plugin pueda mostrar una instrucción más concreta:
+
+> Actualiza primero el clon local: `<ruta>`
+
+`source` **no** es un origen remoto canónico ni un dato de confianza: es solo
+una pista para localizar el clon a actualizar. Si no existe o no es una cadena no
+vacía, el mensaje sigue siendo útil y genérico. No se añade `framework_source`
+en estados donde no se ha podido leer un lock válido (`LOCK_MISSING`).
+
+### Estados y códigos de retorno
+
+| code | status | Significado | Aviso OpenCode |
+|------|--------|-------------|----------------|
+| 0 | `UP_TO_DATE` | El commit instalado == HEAD remoto de la rama. | silencio |
+| 1 | `UPDATE_AVAILABLE` | El HEAD remoto difiere del commit instalado. | aviso con commits cortos, rama y flujo `git pull --ff-only` + `python3 bin/agentic-sync.py --apply` |
+| 2 | `SOURCE_REPO_SKIPPED` | Detectado `.agentic-framework.json` (repositorio fuente). | silencio |
+| 3 | `LOCK_MISSING` | No existe `.agentic.lock.json`. | aviso: flujo manual completo |
+| 4 | `LOCK_INCOMPLETE` | Falta algún campo de trazabilidad (incluye `{}`). | aviso: flujo manual completo |
+| 5 | `LOCK_INVALID` | JSON inválido, no objeto, o campo con tipo incorrecto / SHA mal formado. | aviso breve |
+| 6 | `REMOTE_BRANCH_MISSING` | `git ls-remote` ok pero la rama no existe en el remoto. | aviso breve |
+| 7 | `GIT_OR_NETWORK_ERROR` | `git ls-remote` falló (git ausente, red, auth, ejecución, timeout). | aviso breve |
+
+No hay fallback para SHA abreviados: `framework_commit` debe ser un SHA completo
+válido (agentic-sync siempre lo escribe completo); un SHA mal formado o de tipo
+no string produce `LOCK_INVALID`.
+
+### Ejecución manual
+
+```bash
+python3 .agentic/tools/check-framework-updates.py --root <repo>            # JSON
+python3 .agentic/tools/check-framework-updates.py --root <repo> --human     # legible
+```
+
+El código de salida coincide con la columna `code`. Ante falta de red o locks
+antiguos la sesión continúa; solo se muestra, como mucho, una advertencia breve.
 
 ### Trazabilidad del origen
 

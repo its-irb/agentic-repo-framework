@@ -133,6 +133,8 @@ reutiliza su configuración TLS y credenciales. No requiere instalar
 - Core Skills (`.agentic/skills/`).
 - Wrappers de Core Skills (`.claude/skills/`, `.opencode/skills/`).
 - `docs/documentation-methodology.md`.
+- La herramienta de comprobación `.agentic/tools/check-framework-updates.py`.
+- El plugin de OpenCode `.opencode/plugins/agentic-update-check.js`.
 
 **No gestiona** (no los toca nunca):
 
@@ -167,3 +169,58 @@ python bin/agentic-sync.py --apply .
 ```
 
 El target por defecto es `.`.
+
+## Aviso de actualización del framework
+
+Cuando usas OpenCode en un repositorio sincronizado, el framework comprueba al
+**iniciar** y al **crear una nueva sesión** (incluido `/new`) si el repositorio
+va desactualizado respecto al último commit de la rama registrada. **Solo
+avisa; nunca sincroniza ni pide autorización para hacerlo.**
+
+Usa los datos que el último `agentic-sync.py --apply` registró en
+`.agentic.lock.json` y consulta el remoto con `git ls-remote`.
+
+- **Repositorio actualizado**: no muestra nada.
+- **Repositorio fuente del framework**: no muestra nada (se excluye
+  automáticamente).
+- **Actualización disponible**: muestra un aviso con los commits (cortos), la
+  rama y el flujo manual a seguir.
+- **Lock inexistente** (`LOCK_MISSING`): falta `.agentic.lock.json`; avisa con
+  el flujo manual completo.
+- **Lock incompleto** (`LOCK_INCOMPLETE`): el lock existe pero le falta la
+  trazabilidad; avisa con el flujo manual completo.
+- **Fallo de red, Git o autenticación** (incluido `git` no instalado): la
+  sesión continúa normalmente; solo muestra, como mucho, una advertencia breve
+  de que no se pudo comprobar.
+
+### Flujo manual de actualización
+
+Cuando el aviso indica que hay que actualizar, el flujo actual es:
+
+1. Ir al clon local del Agentic Framework y actualizarlo:
+   ```bash
+   git pull --ff-only
+   ```
+2. Desde ese clon actualizado, aplicar la sincronización sobre el repositorio
+   destino:
+   ```bash
+   python bin/agentic-sync.py --apply <repositorio-destino>
+   ```
+
+Si el lock registró `source` (la ruta del clon usado en el último `apply`), el
+aviso la muestra como ayuda para localizar ese clon. Es solo una pista
+informativa, no un origen canónico.
+
+En el futuro este flujo podrá cambiar cuando la sincronización se haga
+directamente desde GitHub.
+
+Puedes comprobar el estado manualmente en cualquier momento:
+
+```bash
+python3 .agentic/tools/check-framework-updates.py --root .            # salida JSON
+python3 .agentic/tools/check-framework-updates.py --root . --human     # legible
+```
+
+El código de salida indica el estado (`0` actualizado, `1` actualización
+disponible, `2` repositorio fuente, `3` lock inexistente, `4` incompleto, `5`
+inválido, `6` rama remota inexistente, `7` error de red/git o git ausente).

@@ -1,7 +1,9 @@
 {
   "framework_version": "0.1.0",
   "managed_files": [
-    "docs/documentation-methodology.md"
+    "docs/documentation-methodology.md",
+    ".agentic/tools/check-framework-updates.py",
+    ".opencode/plugins/agentic-update-check.js"
   ],
   "managed_skill_roots": [
     ".agentic/skills",

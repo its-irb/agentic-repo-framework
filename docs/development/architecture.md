@@ -62,6 +62,8 @@ El framework se instala y actualiza en repos consumidores mediante
 - Core Skills (`.agentic/skills/`).
 - Wrappers de Core Skills (`.claude/skills/`, `.opencode/skills/`).
 - `docs/documentation-methodology.md`.
+- La herramienta de comprobación `.agentic/tools/check-framework-updates.py`.
+- El plugin de OpenCode `.opencode/plugins/agentic-update-check.js`.
 
 Un manifest (`.agentic-framework.json`) declara la versión del framework, los
 archivos gestionados explícitamente y las raíces de skills a escanear. Cada

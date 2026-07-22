@@ -20,6 +20,8 @@ descubre mediante un wrapper mínimo que redirige a ella.
 - Wrappers específicos por arnés en `.claude/skills/` y `.opencode/skills/` (sin
   lógica de negocio).
 - Sincronización del framework en repos consumidores con `bin/agentic-sync.py`.
+- Aviso automático en OpenCode cuando el repositorio destino va desactualizado
+  respecto al framework (solo avisa; no sincroniza).
 - Manifest de configuración (`.agentic-framework.json`).
 - Lockfile (`.agentic.lock.json`) con propósito dual: baseline documental en el
   framework y estado instalado en consumidores.
@@ -36,8 +38,10 @@ descubre mediante un wrapper mínimo que redirige a ella.
 
 ```text
 .agentic/skills/           # implementación común de cada skill
+.agentic/tools/            # herramientas comunes (p. ej. check-framework-updates.py)
 .claude/skills/            # wrappers para Claude Code
 .opencode/skills/          # wrappers para OpenCode
+.opencode/plugins/         # plugins de OpenCode (p. ej. aviso de actualización)
 bin/agentic-sync.py        # sincroniza el framework en repos consumidores
 docs/                      # documentación en tres capas
 ├── agent/                 # capa compacta para agentes

@@ -38,16 +38,20 @@ python bin/agentic-sync.py --apply --force <target>   # sobrescribe conflictos
 Definidos por el manifest `.agentic-framework.json`:
 
 - `managed_files`: lista explícita. Actualmente:
-  `docs/documentation-methodology.md`.
+  `docs/documentation-methodology.md`,
+  `.agentic/tools/check-framework-updates.py` y
+  `.opencode/plugins/agentic-update-check.js`.
 - `managed_skill_roots`: raíces a escanear en busca de `*/SKILL.md`. Actualmente:
   `.agentic/skills`, `.claude/skills`, `.opencode/skills`.
 
 La lista final gestionada = `managed_files` + los `*/SKILL.md` descubiertos en
 cada raíz, ordenada.
 
-`agentic-sync` **solo** gestiona Core Skills, sus wrappers y
-`docs/documentation-methodology.md`. No modifica Repo Skills, Personal Skills ni
-la documentación específica del consumidor.
+`agentic-sync` **solo** gestiona Core Skills, sus wrappers,
+`docs/documentation-methodology.md`, la herramienta de comprobación
+`.agentic/tools/check-framework-updates.py` y el plugin de OpenCode
+`.opencode/plugins/agentic-update-check.js`. No modifica Repo Skills, Personal
+Skills ni la documentación específica del consumidor.
 
 ## Manifest
 
@@ -56,7 +60,11 @@ la documentación específica del consumidor.
 ```json
 {
   "framework_version": "0.1.0",
-  "managed_files": ["docs/documentation-methodology.md"],
+  "managed_files": [
+    "docs/documentation-methodology.md",
+    ".agentic/tools/check-framework-updates.py",
+    ".opencode/plugins/agentic-update-check.js"
+  ],
   "managed_skill_roots": [".agentic/skills", ".claude/skills", ".opencode/skills"]
 }
 ```
@@ -145,3 +153,84 @@ El formato del lockfile de consumidor puede evolucionar con futuras versiones.
   `--plan` para inspeccionar).
 - `--force` sobrescribe conflictos con la versión del framework; úsalo con
   cuidado.
+
+## Comprobación de actualizaciones (solo avisa)
+
+OpenCode avisa al usuario cuando el repositorio destino no está sincronizado con
+el último commit de la rama del framework registrada en `.agentic.lock.json`.
+**Solo avisa; nunca sincroniza ni modifica el repositorio.**
+
+- Se ejecuta al abrir OpenCode y al crear una nueva sesión (incluido `/new`).
+- Usa los datos registrados por el último `agentic-sync.py --apply`
+  (`framework_remote_url`, `framework_branch`, `framework_commit`).
+- El repositorio fuente del framework se excluye automáticamente (detectado por
+  `.agentic-framework.json`): no avisa.
+- Consulta el remoto con `git ls-remote` (única dependencia: Git). No usa
+  `urllib`/`requests`/`curl`/`certifi`.
+
+La lógica vive en la herramienta común
+`.agentic/tools/check-framework-updates.py` (agnóstica del arnés). El plugin
+`.opencode/plugins/agentic-update-check.js` solo la invoca, interpreta el
+resultado y muestra un aviso.
+
+### Estados del lock
+
+La herramienta distingue tres estados distintos del lockfile:
+
+- `LOCK_MISSING`: `.agentic.lock.json` **no existe**. La instalación está
+  incompleta.
+- `LOCK_INCOMPLETE`: el fichero existe pero le falta algún campo de
+  trazabilidad (incluye un lock `{}` vacío). Hay que sincronizar una vez para
+  registrar la procedencia.
+- `LOCK_INVALID`: el fichero existe pero el JSON es inválido, la raíz no es un
+  objeto, o un campo de trazabilidad tiene tipo incorrecto o no es un SHA
+  completo válido.
+
+### Flujo manual de actualización
+
+Cuando hay una actualización disponible o el lock está incompleto, el aviso
+indica el flujo manual actual:
+
+1. Ir al clon local del Agentic Framework y actualizarlo con
+   `git pull --ff-only`.
+2. Desde ese clon actualizado, ejecutar
+   `bin/agentic-sync.py --apply <repositorio-destino>`.
+
+Si el lock incluye `source` (la ruta del clon usado en el último `apply`), el
+aviso la muestra como ayuda informativa para localizar ese clon. No es un origen
+canónico ni de confianza; es solo una pista.
+
+En el futuro este flujo podrá cambiar cuando la sincronización se haga
+directamente desde GitHub.
+
+### Errores de ejecución de Git
+
+Si `git` no está instalado, no se encuentra en `PATH`, o falla su ejecución
+(incluido timeout), la herramienta lo convierte en el estado controlado
+`GIT_OR_NETWORK_ERROR` (código 7). Nunca se produce un traceback. La sesión de
+OpenCode continúa normalmente.
+
+### Estados y códigos de retorno
+
+| code | status | Aviso en OpenCode |
+|------|--------|-------------------|
+| 0 | `UP_TO_DATE` | silencio |
+| 1 | `UPDATE_AVAILABLE` | aviso con commits cortos, rama y flujo `git pull --ff-only` + `python3 bin/agentic-sync.py --apply` |
+| 2 | `SOURCE_REPO_SKIPPED` | silencio |
+| 3 | `LOCK_MISSING` | aviso: falta el lock, flujo manual completo |
+| 4 | `LOCK_INCOMPLETE` | aviso: falta trazabilidad, flujo manual completo |
+| 5 | `LOCK_INVALID` | aviso breve: no se pudo comprobar |
+| 6 | `REMOTE_BRANCH_MISSING` | aviso breve: no se pudo comprobar |
+| 7 | `GIT_OR_NETWORK_ERROR` | aviso breve: no se pudo comprobar |
+
+Ante fallos de red, Git o autenticación la sesión continúa normalmente; solo
+muestra una advertencia breve.
+
+### Ejecución manual (depuración)
+
+```bash
+python3 .agentic/tools/check-framework-updates.py --root <repo>            # JSON
+python3 .agentic/tools/check-framework-updates.py --root <repo> --human     # legible
+```
+
+El código de salida coincide con la columna `code`.

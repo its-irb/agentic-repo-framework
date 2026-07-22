@@ -41,8 +41,11 @@ fichero común.
 - Un wrapper por arnés soportado; los wrappers no contienen lógica de negocio.
 - La implementación común es independiente del arnés siempre que sea posible.
 - `.agentic-framework.json` es el manifest canónico del framework.
-- `bin/agentic-sync.py` solo gestiona **Core Skills**, wrappers de Core Skills y
-  `docs/documentation-methodology.md`. Nunca toca Repo Skills ni Personal Skills.
+- `bin/agentic-sync.py` solo gestiona **Core Skills**, wrappers de Core Skills,
+  `docs/documentation-methodology.md`, la herramienta
+  `.agentic/tools/check-framework-updates.py` y el plugin de OpenCode
+  `.opencode/plugins/agentic-update-check.js`. Nunca toca Repo Skills ni
+  Personal Skills.
 
 ## Convenciones
 
