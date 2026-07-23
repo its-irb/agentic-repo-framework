@@ -172,13 +172,14 @@ El target por defecto es `.`.
 
 ## Aviso de actualización del framework
 
-Cuando usas OpenCode en un repositorio sincronizado, el framework comprueba al
-**iniciar** y al **crear una nueva sesión** (incluido `/new`) si el repositorio
-va desactualizado respecto al último commit de la rama registrada. **Solo
-avisa; nunca sincroniza ni pide autorización para hacerlo.**
+Cuando usas OpenCode en un repositorio sincronizado, el framework comprueba si
+el repositorio va desactualizado respecto al último commit de la rama registrada.
+**Solo avisa; nunca sincroniza ni pide autorización para hacerlo.**
 
-Usa los datos que el último `agentic-sync.py --apply` registró en
-`.agentic.lock.json` y consulta el remoto con `git ls-remote`.
+La comprobación se dispara con el evento `session.created`. OpenCode materializa
+la sesión al enviar el primer mensaje, por lo que el aviso (si lo hay) aparece en
+ese momento. Las sesiones hijas y los subagentes no la disparan: solo las
+sesiones principales.
 
 - **Repositorio actualizado**: no muestra nada.
 - **Repositorio fuente del framework**: no muestra nada (se excluye
@@ -192,6 +193,21 @@ Usa los datos que el último `agentic-sync.py --apply` registró en
 - **Fallo de red, Git o autenticación** (incluido `git` no instalado): la
   sesión continúa normalmente; solo muestra, como mucho, una advertencia breve
   de que no se pudo comprobar.
+
+### Frecuencia de los avisos
+
+Para no resultar molesto ni consultar GitHub continuamente, el plugin aplica
+límites **en memoria** (al reiniciar OpenCode se reinician):
+
+- Como mucho **una comprobación remota por hora**. Crear muchas sesiones en la
+  misma hora no repite la consulta.
+- La misma actualización (mismo commit remoto) solo avisa **una vez cada 24 h**.
+- Un commit remoto **nuevo** puede avisar en la siguiente comprobación horaria
+  aunque no hayan pasado 24 h desde el aviso anterior.
+- Los avisos de error o diagnóstico (lock ausente/incompleto/inválido, fallo de
+  red, etc.) también se limitan a **uno por tipo cada 24 h**, de forma
+  independiente: alternar entre distintos problemas no reinicia el contador de
+  cada uno.
 
 ### Flujo manual de actualización
 

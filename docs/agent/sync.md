@@ -59,7 +59,7 @@ Skills ni la documentación específica del consumidor.
 
 ```json
 {
-  "framework_version": "0.1.0",
+  "framework_version": "0.1.1",
   "managed_files": [
     "docs/documentation-methodology.md",
     ".agentic/tools/check-framework-updates.py",
@@ -160,9 +160,71 @@ OpenCode avisa al usuario cuando el repositorio destino no está sincronizado co
 el último commit de la rama del framework registrada en `.agentic.lock.json`.
 **Solo avisa; nunca sincroniza ni modifica el repositorio.**
 
-- Se ejecuta al abrir OpenCode y al crear una nueva sesión (incluido `/new`).
-- Usa los datos registrados por el último `agentic-sync.py --apply`
-  (`framework_remote_url`, `framework_branch`, `framework_commit`).
+### Disparador: `session.created`
+
+- El disparador es **únicamente** el evento `session.created`. No hay
+  comprobación durante la inicialización del plugin ni otros eventos.
+- OpenCode materializa la sesión (y emite `session.created`) cuando el usuario
+  envía el primer mensaje. Se acepta deliberadamente ese momento de
+  comprobación: la menor inmediatez no justifica un plugin TUI.
+- Las **sesiones hijas y subagentes** se ignoran: una sesión con `parentID`
+  (campo oficial del SDK) no dispara comprobación. Solo las sesiones principales
+  la disparan.
+
+### Limitación horaria
+
+- Como mucho **una comprobación remota por hora** por instancia cargada del
+  plugin y por repositorio.
+- `lastCheckAt` registra cuándo **comenzó** el último intento (éxito o fallo),
+  no solo cuándo terminó correctamente. Así un fallo de red no provoca un nuevo
+  intento con cada sesión creada.
+- Crear muchas sesiones en la misma hora no consulta GitHub repetidamente.
+
+### Limitación de avisos
+
+- `UP_TO_DATE` y `SOURCE_REPO_SKIPPED` son silenciosos.
+- `UPDATE_AVAILABLE`: la identidad del aviso es `remote_commit`.
+  - Se notifica cuando nunca se ha notificado, o cuando `remote_commit` difiere
+    del último notificado, o cuando han pasado **24 h** desde el último aviso
+    para el mismo commit.
+  - El mismo commit **no** vuelve a avisar antes de 24 h.
+  - Un commit remoto **nuevo** puede notificarse en la siguiente comprobación
+    horaria aunque no hayan pasado 24 h desde el aviso anterior.
+- Diagnósticos (`LOCK_MISSING`, `LOCK_INCOMPLETE`, `LOCK_INVALID`,
+  `REMOTE_BRANCH_MISSING`, `GIT_OR_NETWORK_ERROR`, y el error de ejecución de
+  la herramienta `TOOL_EXECUTION_ERROR`): cada clave conserva
+  **independientemente** su propio instante de último aviso (un `Map` en
+  memoria). Alternar entre diagnósticos no reinicia la limitación de los
+  anteriores. Ninguno se repite antes de 24 h.
+
+### Estado solo en memoria
+
+Todo el estado vive en memoria dentro de la instancia del plugin:
+`lastCheckAt`, `checkInFlight`, `lastNotifiedCommit`, `lastNotificationAt` y el
+`Map` de diagnósticos. **No hay persistencia en disco.** Reiniciar OpenCode
+reinicia los límites: la primera sesión principal materializada puede volver a
+comprobar y a avisar.
+
+### Concurrencia
+
+`checkInFlight` garantiza una sola comprobación en vuelo. Se establece
+sincrónicamente antes de lanzar la herramienta y se limpia con `finally`, de
+modo que dos sesiones casi simultáneas (o una principal y un subagente durante
+la misma comprobación) lanzan a lo sumo una herramienta, y una excepción nunca
+deja el estado bloqueado. El manejador es *fire-and-forget*: no espera a la
+comprobación, así la sesión no se retrasa.
+
+### Por qué no hay plugin TUI
+
+Se descartó el plugin TUI para no crear ni gestionar `.opencode/tui.json`, no
+editar configuración compartida de OpenCode y no introducir un segundo tipo de
+plugin ni comprobaciones durante la inicialización. Si OpenCode incorpora en el
+futuro un evento de inicio más adecuado, podrá sustituirse `session.created`.
+
+### Herramienta común
+
+Usa los datos registrados por el último `agentic-sync.py --apply`
+(`framework_remote_url`, `framework_branch`, `framework_commit`).
 - El repositorio fuente del framework se excluye automáticamente (detectado por
   `.agentic-framework.json`): no avisa.
 - Consulta el remoto con `git ls-remote` (única dependencia: Git). No usa
@@ -171,7 +233,8 @@ el último commit de la rama del framework registrada en `.agentic.lock.json`.
 La lógica vive en la herramienta común
 `.agentic/tools/check-framework-updates.py` (agnóstica del arnés). El plugin
 `.opencode/plugins/agentic-update-check.js` solo la invoca, interpreta el
-resultado y muestra un aviso.
+resultado y aplica la limitación de avisos. **No duplica la lógica de Git, lock
+ni comparación de commits**, y no modifica la herramienta Python.
 
 ### Estados del lock
 
@@ -215,16 +278,18 @@ OpenCode continúa normalmente.
 | code | status | Aviso en OpenCode |
 |------|--------|-------------------|
 | 0 | `UP_TO_DATE` | silencio |
-| 1 | `UPDATE_AVAILABLE` | aviso con commits cortos, rama y flujo `git pull --ff-only` + `python3 bin/agentic-sync.py --apply` |
+| 1 | `UPDATE_AVAILABLE` | aviso con commits cortos, rama y flujo `git pull --ff-only` + `python3 bin/agentic-sync.py --apply` (mismo commit: como mucho cada 24 h; commit nuevo: en la siguiente comprobación horaria) |
 | 2 | `SOURCE_REPO_SKIPPED` | silencio |
-| 3 | `LOCK_MISSING` | aviso: falta el lock, flujo manual completo |
-| 4 | `LOCK_INCOMPLETE` | aviso: falta trazabilidad, flujo manual completo |
-| 5 | `LOCK_INVALID` | aviso breve: no se pudo comprobar |
-| 6 | `REMOTE_BRANCH_MISSING` | aviso breve: no se pudo comprobar |
-| 7 | `GIT_OR_NETWORK_ERROR` | aviso breve: no se pudo comprobar |
+| 3 | `LOCK_MISSING` | aviso: falta el lock, flujo manual completo (como mucho cada 24 h por clave) |
+| 4 | `LOCK_INCOMPLETE` | aviso: falta trazabilidad, flujo manual completo (como mucho cada 24 h por clave) |
+| 5 | `LOCK_INVALID` | aviso breve: no se pudo comprobar (como mucho cada 24 h por clave) |
+| 6 | `REMOTE_BRANCH_MISSING` | aviso breve: no se pudo comprobar (como mucho cada 24 h por clave) |
+| 7 | `GIT_OR_NETWORK_ERROR` | aviso breve: no se pudo comprobar (como mucho cada 24 h por clave) |
 
 Ante fallos de red, Git o autenticación la sesión continúa normalmente; solo
-muestra una advertencia breve.
+muestra una advertencia breve. Los avisos de diagnóstico (códigos 3-7 y errores
+de ejecución de la herramienta) se limitan a uno por clave cada 24 h en memoria,
+para que no se repitan al crear sesiones.
 
 ### Ejecución manual (depuración)
 

@@ -93,7 +93,7 @@ La sintaxis canónica coloca la acción antes de la ruta del target. Ver
 
 ## Estado
 
-Versión `0.1.0` (modelo v0: solo soporte para Core Skills gestionadas por sync).
+Versión `0.1.1` (modelo v0: solo soporte para Core Skills gestionadas por sync).
 
 ## Licencia
 

@@ -123,7 +123,7 @@ Tanto `--plan` como `--apply` imprimen:
 
 Declara:
 
-- `framework_version`: versión del framework (actualmente `0.1.0`).
+- `framework_version`: versión del framework (actualmente `0.1.1`).
 - `managed_files`: archivos gestionados explícitos (actualmente
   `docs/documentation-methodology.md`,
   `.agentic/tools/check-framework-updates.py` y
@@ -176,7 +176,7 @@ Claves gestionadas por `agentic-sync`:
 
 ```json
 {
-  "framework_version": "0.1.0",
+  "framework_version": "0.1.1",
   "installed_at": "<ISO-8601>",
   "source": "<framework root path>",
   "managed_core_skills": ["commit-work", "docs-init", "docs-init-full", "docs-update"],
@@ -232,24 +232,71 @@ La lógica está separada en dos capas para no duplicarla entre arneses:
 
 ### Cuándo se ejecuta
 
-- Al abrir OpenCode (que crea la sesión inicial).
-- Al crear una nueva sesión, incluido `/new`.
+- El disparador es **únicamente** el evento `session.created`. No hay
+  comprobación durante la inicialización del plugin.
+- OpenCode materializa la sesión (y emite `session.created`) cuando el usuario
+  envía el primer mensaje. Se acepta deliberadamente ese momento de
+  comprobación: la menor inmediatez no justifica un plugin TUI (ver más abajo
+  «Por qué no hay plugin TUI»).
+- Las **sesiones hijas y subagentes** se ignoran: una sesión con `parentID`
+  (campo oficial del SDK `Session.parentID`) no dispara comprobación. Solo las
+  sesiones principales la disparan.
 
-El disparador es **únicamente** el evento `session.created`. El plugin no
-comprueba durante su inicialización, por lo que una misma apertura no produce
-dos avisos (init + `session.created`).
+### Limitación horaria (en memoria)
 
-### Ejecución no bloqueante y sin duplicados
+- Como mucho **una comprobación remota por hora** por instancia cargada del
+  plugin y por repositorio.
+- `lastCheckAt` registra cuándo **comenzó** el último intento (éxito o fallo),
+  no solo cuándo terminó correctamente. Así un fallo de red no provoca un nuevo
+  intento con cada sesión creada.
+- Crear muchas sesiones en la misma hora no consulta GitHub repetidamente.
+
+### Limitación de avisos (en memoria)
+
+- `UP_TO_DATE` y `SOURCE_REPO_SKIPPED` son silenciosos.
+- `UPDATE_AVAILABLE`: la identidad del aviso es `remote_commit`.
+  - Se notifica cuando nunca se ha notificado, o cuando `remote_commit` difiere
+    del último notificado, o cuando han pasado **24 h** desde el último aviso
+    para el mismo commit.
+  - El mismo commit **no** vuelve a avisar antes de 24 h.
+  - Un commit remoto **nuevo** puede notificarse en la siguiente comprobación
+    horaria aunque no hayan pasado 24 h desde el aviso anterior.
+- Diagnósticos (`LOCK_MISSING`, `LOCK_INCOMPLETE`, `LOCK_INVALID`,
+  `REMOTE_BRANCH_MISSING`, `GIT_OR_NETWORK_ERROR`, y el error de ejecución de
+  la herramienta `TOOL_EXECUTION_ERROR`): cada clave conserva
+  **independientemente** su propio instante de último aviso mediante un `Map`
+  (`diagnosticNotificationAtByKey`). Alternar entre diagnósticos no reinicia la
+  limitación de los anteriores. Ninguno se repite antes de 24 h.
+
+### Estado solo en memoria y concurrencia
+
+Todo el estado vive en memoria dentro de la instancia del plugin:
+`lastCheckAt`, `checkInFlight`, `lastNotifiedCommit`, `lastNotificationAt` y el
+`Map` de diagnósticos. **No hay persistencia en disco.** Reiniciar OpenCode
+reinicia los límites: la primera sesión principal materializada puede volver a
+comprobar y a avisar.
+
+`checkInFlight` garantiza una sola comprobación en vuelo: se establece
+sincrónicamente antes de lanzar la herramienta y se limpia con `finally`, de
+modo que dos sesiones casi simultáneas (o una principal y un subagente durante
+la misma comprobación) lanzan a lo sumo una herramienta, y una excepción nunca
+deja el estado bloqueado.
+
+### Ejecución no bloqueante
 
 - **Fire-and-forget**: el manejador de `session.created` no espera a la
   comprobación; devuelve una promesa resuelta de inmediato. Aunque OpenCode
   espere la finalización del manejador, la sesión no se retrasa. La herramienta
   acota `git ls-remote` a 10 s, de modo que un fallo de red no puede demorar la
   sesión 30 s.
-- **Dedup por sesión**: una guarda por instancia omite un segundo
-  `session.created` para el mismo `session.id`. Las sesiones distintas (abrir y
-  luego `/new`) siempre se comprueban. No es una caché entre sesiones: cada
-  sesión nueva se comprueba.
+
+### Por qué no hay plugin TUI
+
+Se descartó el plugin TUI para no crear ni gestionar `.opencode/tui.json`, no
+editar configuración compartida de OpenCode, no introducir un segundo tipo de
+plugin ni comprobaciones durante la inicialización, y no depender de
+`server.connected`. Si OpenCode incorpora en el futuro un evento de inicio más
+adecuado, podrá sustituirse `session.created`.
 
 ### Repositorio fuente y locks antiguos
 
@@ -316,17 +363,19 @@ en estados donde no se ha podido leer un lock válido (`LOCK_MISSING`).
 | code | status | Significado | Aviso OpenCode |
 |------|--------|-------------|----------------|
 | 0 | `UP_TO_DATE` | El commit instalado == HEAD remoto de la rama. | silencio |
-| 1 | `UPDATE_AVAILABLE` | El HEAD remoto difiere del commit instalado. | aviso con commits cortos, rama y flujo `git pull --ff-only` + `python3 bin/agentic-sync.py --apply` |
+| 1 | `UPDATE_AVAILABLE` | El HEAD remoto difiere del commit instalado. | aviso con commits cortos, rama y flujo `git pull --ff-only` + `python3 bin/agentic-sync.py --apply` (mismo commit: como mucho cada 24 h; commit nuevo: en la siguiente comprobación horaria) |
 | 2 | `SOURCE_REPO_SKIPPED` | Detectado `.agentic-framework.json` (repositorio fuente). | silencio |
-| 3 | `LOCK_MISSING` | No existe `.agentic.lock.json`. | aviso: flujo manual completo |
-| 4 | `LOCK_INCOMPLETE` | Falta algún campo de trazabilidad (incluye `{}`). | aviso: flujo manual completo |
-| 5 | `LOCK_INVALID` | JSON inválido, no objeto, o campo con tipo incorrecto / SHA mal formado. | aviso breve |
-| 6 | `REMOTE_BRANCH_MISSING` | `git ls-remote` ok pero la rama no existe en el remoto. | aviso breve |
-| 7 | `GIT_OR_NETWORK_ERROR` | `git ls-remote` falló (git ausente, red, auth, ejecución, timeout). | aviso breve |
+| 3 | `LOCK_MISSING` | No existe `.agentic.lock.json`. | aviso: flujo manual completo (como mucho cada 24 h por clave) |
+| 4 | `LOCK_INCOMPLETE` | Falta algún campo de trazabilidad (incluye `{}`). | aviso: flujo manual completo (como mucho cada 24 h por clave) |
+| 5 | `LOCK_INVALID` | JSON inválido, no objeto, o campo con tipo incorrecto / SHA mal formado. | aviso breve (como mucho cada 24 h por clave) |
+| 6 | `REMOTE_BRANCH_MISSING` | `git ls-remote` ok pero la rama no existe en el remoto. | aviso breve (como mucho cada 24 h por clave) |
+| 7 | `GIT_OR_NETWORK_ERROR` | `git ls-remote` falló (git ausente, red, auth, ejecución, timeout). | aviso breve (como mucho cada 24 h por clave) |
 
 No hay fallback para SHA abreviados: `framework_commit` debe ser un SHA completo
 válido (agentic-sync siempre lo escribe completo); un SHA mal formado o de tipo
-no string produce `LOCK_INVALID`.
+no string produce `LOCK_INVALID`. Los avisos de diagnóstico (códigos 3-7 y
+errores de ejecución de la herramienta) se limitan a uno por clave cada 24 h en
+memoria, para que no se repitan al crear sesiones.
 
 ### Ejecución manual
 

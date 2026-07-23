@@ -126,5 +126,5 @@ instalarlo en consumidores.
 
 ## Estado y madurez
 
-Versión del framework: `0.1.0` (declarada en `.agentic-framework.json`).
+Versión del framework: `0.1.1` (declarada en `.agentic-framework.json`).
 Modelo v0: solo soporte para Core Skills.
